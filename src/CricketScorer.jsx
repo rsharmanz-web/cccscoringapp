@@ -92,6 +92,12 @@ export default function CricketScorer() {
       if (mode === 'batting') setScreen('batting-summary');
       else setScreen('bowling-summary');
     }
+    else if (screen === 'innings1-review') {
+      setScreen(innings2Complete ? 'match-summary' : 'mode-select');
+    }
+    else if (screen === 'innings2-review') {
+      setScreen('match-summary');
+    }
   };
 
   const selectBatsman = (position, name) => {
@@ -249,10 +255,39 @@ export default function CricketScorer() {
     }
   };
 
+  const formatInningsCsv = (label, data) => {
+    if (!data) return '';
+    let csv = `\n${label}\n`;
+    csv += `Team,${data.team}\n`;
+    csv += `Mode,${data.mode}\n`;
+    csv += `Total,${data.totalRuns}/${data.wickets}\n`;
+    csv += `Extras,${data.extras || 0}\n`;
+    csv += `Overs,${data.overs || 0}\n`;
+
+    if (data.mode === 'batting' && data.batStats) {
+      csv += '\nBatting\nPlayer,Runs,Balls,Outs\n';
+      Object.entries(data.batStats).forEach(([player, stats]) => {
+        csv += `${player},${stats.runs},${stats.balls},${data.batOuts?.[player] || 0}\n`;
+      });
+    }
+
+    if (data.mode === 'bowling' && data.bowlerStats) {
+      csv += '\nBowling\nBowler,Overs,Runs,Wickets,Wides\n';
+      Object.entries(data.bowlerStats).forEach(([bowler, stats]) => {
+        csv += `${bowler},${Number(stats.overs || 0).toFixed(1)},${stats.runs},${stats.wickets},${stats.wides}\n`;
+      });
+    }
+
+    return csv;
+  };
+
   const exportToCSV = () => {
-    let csv = "Cornwall Cricket Club - Jr Cricket Match Report\n\n";
+    let csv = 'Cornwall Cricket Club - Jr Cricket Match Report\n\n';
     csv += `Date,${matchDate}\n`;
-    
+    csv += `Teams,${team1} vs ${team2}\n`;
+    csv += formatInningsCsv('1st Innings', innings1Data);
+    csv += formatInningsCsv('2nd Innings', innings2Data);
+
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -261,6 +296,124 @@ export default function CricketScorer() {
     a.click();
     window.URL.revokeObjectURL(url);
     alert('Match data downloaded! Email to rahul@cornwallcricket.co.nz');
+  };
+
+  const renderLiveBattingSummary = () => (
+    <div style={{ display: 'grid', gap: '0.75rem' }}>
+      {Object.keys(batStats).length === 0 ? (
+        <p style={{ color: COLORS.gray }}>No batting figures yet.</p>
+      ) : (
+        Object.entries(batStats).map(([player, stats]) => (
+          <div key={player} style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '1rem', backgroundColor: 'white', borderRadius: '1rem',
+            border: '2px solid #E5E7EB'
+          }}>
+            <div>
+              <div style={{ fontWeight: '800', color: COLORS.black }}>{player}</div>
+              <div style={{ fontSize: '0.75rem', color: COLORS.gray }}>
+                {batOuts[player] || 0} out{(batOuts[player] || 0) === 1 ? '' : 's'}
+              </div>
+            </div>
+            <div style={{ fontWeight: '900', fontSize: '1.25rem', color: COLORS.black }}>
+              {stats.runs} <span style={{ fontSize: '0.875rem', color: COLORS.gray }}>({stats.balls})</span>
+            </div>
+          </div>
+        ))
+      )}
+      <div style={{
+        padding: '1rem', backgroundColor: COLORS.black, color: 'white',
+        borderRadius: '1rem', display: 'flex', justifyContent: 'space-between'
+      }}>
+        <span style={{ fontWeight: '700' }}>TOTAL</span>
+        <span style={{ fontWeight: '900' }}>{totalRuns}/{wickets} · Extras {extras}</span>
+      </div>
+    </div>
+  );
+
+  const renderLiveBowlingSummary = () => (
+    <div style={{ display: 'grid', gap: '0.75rem' }}>
+      {Object.keys(bowlerStats).length === 0 ? (
+        <p style={{ color: COLORS.gray }}>No bowling figures yet.</p>
+      ) : (
+        Object.entries(bowlerStats).map(([bowler, stats]) => (
+          <div key={bowler} style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '1rem', backgroundColor: 'white', borderRadius: '1rem',
+            border: '2px solid #E5E7EB'
+          }}>
+            <div>
+              <div style={{ fontWeight: '800', color: COLORS.black }}>{bowler}</div>
+              <div style={{ fontSize: '0.75rem', color: COLORS.gray }}>
+                {Number(stats.overs || 0).toFixed(1)} overs · {stats.wides} wide{stats.wides === 1 ? '' : 's'}
+              </div>
+            </div>
+            <div style={{ fontWeight: '900', fontSize: '1.25rem', color: COLORS.black }}>
+              {stats.wickets}/{stats.runs}
+            </div>
+          </div>
+        ))
+      )}
+      <div style={{
+        padding: '1rem', backgroundColor: COLORS.black, color: 'white',
+        borderRadius: '1rem', display: 'flex', justifyContent: 'space-between'
+      }}>
+        <span style={{ fontWeight: '700' }}>TOTAL</span>
+        <span style={{ fontWeight: '900' }}>{totalRuns}/{wickets} · Over {overNumber}</span>
+      </div>
+    </div>
+  );
+
+  const renderInningsReview = (data, label) => {
+    if (!data) {
+      return <p style={{ color: COLORS.gray }}>No data for this innings yet.</p>;
+    }
+
+    return (
+      <div style={{ display: 'grid', gap: '1rem' }}>
+        <div style={{
+          padding: '1.5rem', backgroundColor: COLORS.black, color: 'white',
+          borderRadius: '1.5rem', textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: '700', letterSpacing: '1px', opacity: 0.7 }}>
+            {label}
+          </div>
+          <div style={{ fontSize: '1.25rem', fontWeight: '800', marginTop: '0.5rem' }}>{data.team}</div>
+          <div style={{ fontSize: '2.5rem', fontWeight: '900', marginTop: '0.5rem' }}>
+            {data.totalRuns}/{data.wickets}
+          </div>
+          <div style={{ fontSize: '0.875rem', opacity: 0.8, marginTop: '0.25rem' }}>
+            {data.mode === 'batting' ? 'Batting' : 'Bowling'} · Extras {data.extras || 0} · Overs {data.overs || 0}
+          </div>
+        </div>
+
+        {data.mode === 'batting' && data.batStats && Object.entries(data.batStats).map(([player, stats]) => (
+          <div key={player} style={{
+            display: 'flex', justifyContent: 'space-between',
+            padding: '1rem', backgroundColor: 'white', borderRadius: '1rem',
+            border: '2px solid #E5E7EB'
+          }}>
+            <span style={{ fontWeight: '800' }}>{player}</span>
+            <span style={{ fontWeight: '900' }}>
+              {stats.runs} ({stats.balls}) · {data.batOuts?.[player] || 0} out
+            </span>
+          </div>
+        ))}
+
+        {data.mode === 'bowling' && data.bowlerStats && Object.entries(data.bowlerStats).map(([bowler, stats]) => (
+          <div key={bowler} style={{
+            display: 'flex', justifyContent: 'space-between',
+            padding: '1rem', backgroundColor: 'white', borderRadius: '1rem',
+            border: '2px solid #E5E7EB'
+          }}>
+            <span style={{ fontWeight: '800' }}>{bowler}</span>
+            <span style={{ fontWeight: '900' }}>
+              {stats.wickets}/{stats.runs} ({Number(stats.overs || 0).toFixed(1)})
+            </span>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const ConfirmModal = ({ show, onClose, onConfirm, title, message }) => {
@@ -311,13 +464,13 @@ export default function CricketScorer() {
       }}>
         <div style={{ maxWidth: '28rem', margin: '0 auto', display: 'flex', 
           alignItems: 'center', justifyContent: 'space-between' }}>
-          {screen !== 'welcome' && screen !== 'innings1-review' && screen !== 'innings2-review' && (
+          {screen !== 'welcome' && screen !== 'innings1-review' && screen !== 'innings2-review' && screen !== 'match-summary' && (
             <button onClick={goBack} style={{ background: 'none', border: 'none', 
               color: 'white', cursor: 'pointer', padding: '0.5rem' }}>
               <ChevronLeft size={28} />
             </button>
           )}
-          {(screen === 'welcome' || screen === 'innings1-review' || screen === 'innings2-review') && 
+          {(screen === 'welcome' || screen === 'innings1-review' || screen === 'innings2-review' || screen === 'match-summary') && 
             <div style={{ width: '2rem' }}></div>}
           
           <h1 style={{ 
@@ -1353,38 +1506,126 @@ export default function CricketScorer() {
           </div>
         )}
 
-        {/* Confirm Innings placeholder - would show summary before confirming */}
-        {screen === 'confirm-innings' && (
-          <div style={{ paddingTop: '2rem', textAlign: 'center' }}>
+        {screen === 'batting-summary' && (
+          <div style={{ paddingTop: '1rem' }}>
             <h2 style={{
               fontSize: '2rem', fontWeight: '900', color: COLORS.black,
-              marginBottom: '2rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
-            }}>CONFIRM INNINGS</h2>
-            <button onClick={confirmInnings}
+              marginBottom: '1.5rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
+            }}>Batting Summary</h2>
+            {renderLiveBattingSummary()}
+            <button
+              onClick={() => setScreen('batting-score')}
               style={{
-                width: '100%', padding: '1.25rem', backgroundColor: COLORS.black,
-                color: 'white', border: 'none', borderRadius: '3rem',
-                fontSize: '1rem', fontWeight: '800', cursor: 'pointer',
-                textTransform: 'uppercase'
+                width: '100%', marginTop: '1.5rem', padding: '1.25rem',
+                backgroundColor: COLORS.black, color: 'white', border: 'none',
+                borderRadius: '3rem', fontSize: '1rem', fontWeight: '800',
+                cursor: 'pointer', textTransform: 'uppercase'
               }}
-            >Confirm & Continue</button>
+            >Back to Scoring</button>
           </div>
         )}
 
-        {/* Match Summary placeholder */}
-        {screen === 'match-summary' && innings1Data && innings2Data && (
-          <div style={{ paddingTop: '2rem', textAlign: 'center' }}>
+        {screen === 'bowling-summary' && (
+          <div style={{ paddingTop: '1rem' }}>
             <h2 style={{
               fontSize: '2rem', fontWeight: '900', color: COLORS.black,
-              marginBottom: '2rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
-            }}>MATCH COMPLETE</h2>
+              marginBottom: '1.5rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
+            }}>Bowling Summary</h2>
+            {renderLiveBowlingSummary()}
+            <button
+              onClick={() => setScreen('bowling-score')}
+              style={{
+                width: '100%', marginTop: '1.5rem', padding: '1.25rem',
+                backgroundColor: COLORS.black, color: 'white', border: 'none',
+                borderRadius: '3rem', fontSize: '1rem', fontWeight: '800',
+                cursor: 'pointer', textTransform: 'uppercase'
+              }}
+            >Back to Scoring</button>
+          </div>
+        )}
+
+        {screen === 'innings1-review' && (
+          <div style={{ paddingTop: '1rem' }}>
+            <h2 style={{
+              fontSize: '2rem', fontWeight: '900', color: COLORS.black,
+              marginBottom: '1.5rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
+            }}>1st Innings</h2>
+            {renderInningsReview(innings1Data, '1ST INNINGS')}
+            <button
+              onClick={() => setScreen(innings2Complete ? 'match-summary' : 'mode-select')}
+              style={{
+                width: '100%', marginTop: '1.5rem', padding: '1.25rem',
+                backgroundColor: COLORS.black, color: 'white', border: 'none',
+                borderRadius: '3rem', fontSize: '1rem', fontWeight: '800',
+                cursor: 'pointer', textTransform: 'uppercase'
+              }}
+            >Continue</button>
+          </div>
+        )}
+
+        {screen === 'innings2-review' && (
+          <div style={{ paddingTop: '1rem' }}>
+            <h2 style={{
+              fontSize: '2rem', fontWeight: '900', color: COLORS.black,
+              marginBottom: '1.5rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
+            }}>2nd Innings</h2>
+            {renderInningsReview(innings2Data, '2ND INNINGS')}
+            <button
+              onClick={() => setScreen('match-summary')}
+              style={{
+                width: '100%', marginTop: '1.5rem', padding: '1.25rem',
+                backgroundColor: COLORS.black, color: 'white', border: 'none',
+                borderRadius: '3rem', fontSize: '1rem', fontWeight: '800',
+                cursor: 'pointer', textTransform: 'uppercase'
+              }}
+            >Match Summary</button>
+          </div>
+        )}
+
+        {screen === 'confirm-innings' && (
+          <div style={{ paddingTop: '1rem' }}>
+            <h2 style={{
+              fontSize: '2rem', fontWeight: '900', color: COLORS.black,
+              marginBottom: '1.5rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
+            }}>Confirm Innings</h2>
+            {mode === 'batting' ? renderLiveBattingSummary() : renderLiveBowlingSummary()}
+            <button onClick={confirmInnings}
+              style={{
+                width: '100%', marginTop: '1.5rem', padding: '1.25rem',
+                backgroundColor: COLORS.black, color: 'white', border: 'none',
+                borderRadius: '3rem', fontSize: '1rem', fontWeight: '800',
+                cursor: 'pointer', textTransform: 'uppercase'
+              }}
+            >{innings1Complete ? 'Confirm & Finish Match' : 'Confirm & Start Next Innings'}</button>
+          </div>
+        )}
+
+        {screen === 'match-summary' && innings1Data && innings2Data && (
+          <div style={{ paddingTop: '1rem' }}>
+            <h2 style={{
+              fontSize: '2rem', fontWeight: '900', color: COLORS.black,
+              marginBottom: '1.5rem', letterSpacing: '-0.03em', textTransform: 'uppercase',
+              textAlign: 'center'
+            }}>Match Complete</h2>
             <div style={{
               backgroundColor: COLORS.black, borderRadius: '1.5rem',
-              padding: '2rem', marginBottom: '1.5rem'
+              padding: '2rem', marginBottom: '1.5rem', textAlign: 'center'
             }}>
-              <div style={{ color: 'white', fontSize: '3rem', fontWeight: '900' }}>
+              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem', fontWeight: '700' }}>
+                {team1} vs {team2}
+              </div>
+              <div style={{ color: 'white', fontSize: '2.5rem', fontWeight: '900', marginTop: '0.75rem' }}>
                 {innings1Data.totalRuns} - {innings2Data.totalRuns}
               </div>
+              <div style={{ color: 'rgba(255,255,255,0.8)', marginTop: '0.75rem', fontSize: '0.875rem' }}>
+                {innings1Data.team}: {innings1Data.totalRuns}/{innings1Data.wickets}
+                {' · '}
+                {innings2Data.team}: {innings2Data.totalRuns}/{innings2Data.wickets}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: '1rem', marginBottom: '1.5rem' }}>
+              {renderInningsReview(innings1Data, '1ST INNINGS')}
+              {renderInningsReview(innings2Data, '2ND INNINGS')}
             </div>
             <button onClick={exportToCSV}
               style={{
@@ -1394,6 +1635,26 @@ export default function CricketScorer() {
                 textTransform: 'uppercase'
               }}
             >Download Match Report</button>
+            <button
+              onClick={() => {
+                setScreen('welcome');
+                setTeam1(''); setTeam2(''); setMyTeam(''); setMode('');
+                setInnings1Complete(false); setInnings2Complete(false);
+                setInnings1Data(null); setInnings2Data(null);
+                setBatStats({}); setBatOuts({}); setTotalRuns(0); setWickets(0);
+                setExtras(0); setBowlerStats({}); setOverNumber(1);
+                setCurrentBatsmen([null, null]); setStriker(0);
+                setBattingOrder(['']); setCurrentBowler(''); setCurrentOver([]);
+                setBattingOverHistory([]);
+              }}
+              style={{
+                width: '100%', marginTop: '0.75rem', padding: '1.25rem',
+                backgroundColor: 'white', color: COLORS.black,
+                border: `2px solid ${COLORS.black}`, borderRadius: '3rem',
+                fontSize: '1rem', fontWeight: '800', cursor: 'pointer',
+                textTransform: 'uppercase'
+              }}
+            >New Match</button>
           </div>
         )}
       </div>
