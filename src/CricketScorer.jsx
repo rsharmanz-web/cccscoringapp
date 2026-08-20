@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, BarChart3, Menu, X, Plus, Minus } from 'lucide-react';
 
 const TEAMS = [
@@ -30,6 +30,53 @@ const COLORS = {
   gray: '#6B7280'
 };
 
+const STORAGE_KEY = 'ccc-active-match';
+const NON_MATCH_SCREENS = new Set(['welcome', 'draw', 'draw-fixtures']);
+
+const loadStoredMatch = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.version === 1 ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const saveStoredMatch = (snapshot) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Ignore quota / private mode failures
+  }
+};
+
+const clearStoredMatch = () => {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Ignore
+  }
+};
+
+const draftSummaryLine = (draft) => {
+  if (!draft) return '';
+  const teams = draft.team1 && draft.team2
+    ? `${draft.team1} vs ${draft.team2}`
+    : 'Match in progress';
+  if (draft.innings1Complete && draft.innings2Complete && draft.innings1Data && draft.innings2Data) {
+    return `${teams} · ${draft.innings1Data.totalRuns}-${draft.innings2Data.totalRuns}`;
+  }
+  if (draft.innings1Complete && draft.innings1Data) {
+    return `${teams} · 1st innings ${draft.innings1Data.totalRuns}/${draft.innings1Data.wickets}`;
+  }
+  if (draft.totalRuns || draft.wickets) {
+    return `${teams} · Live ${draft.totalRuns}/${draft.wickets}`;
+  }
+  return teams;
+};
+
 export default function CricketScorer() {
   const [screen, setScreen] = useState('welcome');
   const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]);
@@ -39,6 +86,7 @@ export default function CricketScorer() {
   const [mode, setMode] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [selectedRound, setSelectedRound] = useState(null);
+  const [savedDraft, setSavedDraft] = useState(null);
   
   const [battingOrder, setBattingOrder] = useState(['']);
   const [currentBatsmen, setCurrentBatsmen] = useState([null, null]);
@@ -66,12 +114,201 @@ export default function CricketScorer() {
   const [innings2Complete, setInnings2Complete] = useState(false);
   const [innings2Data, setInnings2Data] = useState(null);
 
+  const skipNextSave = useRef(true);
+
+  const resetMatchState = () => {
+    setScreen('welcome');
+    setMatchDate(new Date().toISOString().split('T')[0]);
+    setTeam1('');
+    setTeam2('');
+    setMyTeam('');
+    setMode('');
+    setShowMenu(false);
+    setSelectedRound(null);
+    setBattingOrder(['']);
+    setCurrentBatsmen([null, null]);
+    setStriker(0);
+    setBatStats({});
+    setBatOuts({});
+    setTotalRuns(0);
+    setWickets(0);
+    setExtras(0);
+    setShowExtrasMenu(false);
+    setShowEndInningsConfirm(false);
+    setShowNewPartnershipConfirm(false);
+    setBattingOverHistory([]);
+    setShowEndOverConfirm(false);
+    setCurrentBowler('');
+    setCurrentOver([]);
+    setBowlerStats({});
+    setOverNumber(1);
+    setShowWideMenu(false);
+    setShowBowlingEndOverConfirm(false);
+    setInnings1Complete(false);
+    setInnings1Data(null);
+    setInnings2Complete(false);
+    setInnings2Data(null);
+  };
+
+  const applyMatchSnapshot = (snapshot) => {
+    if (!snapshot) return;
+    skipNextSave.current = true;
+    setScreen(snapshot.screen || 'welcome');
+    setMatchDate(snapshot.matchDate || new Date().toISOString().split('T')[0]);
+    setTeam1(snapshot.team1 || '');
+    setTeam2(snapshot.team2 || '');
+    setMyTeam(snapshot.myTeam || '');
+    setMode(snapshot.mode || '');
+    setShowMenu(false);
+    setSelectedRound(null);
+    setBattingOrder(snapshot.battingOrder?.length ? snapshot.battingOrder : ['']);
+    setCurrentBatsmen(snapshot.currentBatsmen || [null, null]);
+    setStriker(snapshot.striker || 0);
+    setBatStats(snapshot.batStats || {});
+    setBatOuts(snapshot.batOuts || {});
+    setTotalRuns(snapshot.totalRuns || 0);
+    setWickets(snapshot.wickets || 0);
+    setExtras(snapshot.extras || 0);
+    setShowExtrasMenu(false);
+    setShowEndInningsConfirm(false);
+    setShowNewPartnershipConfirm(false);
+    setBattingOverHistory(snapshot.battingOverHistory || []);
+    setShowEndOverConfirm(false);
+    setCurrentBowler(snapshot.currentBowler || '');
+    setCurrentOver(snapshot.currentOver || []);
+    setBowlerStats(snapshot.bowlerStats || {});
+    setOverNumber(snapshot.overNumber || 1);
+    setShowWideMenu(false);
+    setShowBowlingEndOverConfirm(false);
+    setInnings1Complete(!!snapshot.innings1Complete);
+    setInnings1Data(snapshot.innings1Data || null);
+    setInnings2Complete(!!snapshot.innings2Complete);
+    setInnings2Data(snapshot.innings2Data || null);
+  };
+
+  const buildSnapshot = () => ({
+    version: 1,
+    savedAt: Date.now(),
+    screen,
+    matchDate,
+    team1,
+    team2,
+    myTeam,
+    mode,
+    battingOrder,
+    currentBatsmen,
+    striker,
+    batStats,
+    batOuts,
+    totalRuns,
+    wickets,
+    extras,
+    battingOverHistory,
+    currentBowler,
+    currentOver,
+    bowlerStats,
+    overNumber,
+    innings1Complete,
+    innings1Data,
+    innings2Complete,
+    innings2Data,
+  });
+
+  const startFreshMatch = () => {
+    clearStoredMatch();
+    setSavedDraft(null);
+    resetMatchState();
+    setScreen('setup');
+  };
+
+  const resumeSavedMatch = () => {
+    const draft = savedDraft || loadStoredMatch();
+    if (!draft) return;
+
+    const next = { ...draft };
+    if (NON_MATCH_SCREENS.has(next.screen || 'welcome')) {
+      if (next.innings2Complete && next.innings1Data && next.innings2Data) {
+        next.screen = 'match-summary';
+      } else if (next.mode === 'batting' && next.currentBatsmen?.[0] && next.currentBatsmen?.[1]) {
+        next.screen = 'batting-score';
+      } else if (next.mode === 'batting') {
+        next.screen = next.battingOrder?.some(Boolean) ? 'select-batsmen' : 'batting-order';
+      } else if (next.mode === 'bowling' && next.currentBowler) {
+        next.screen = 'bowling-score';
+      } else if (next.mode === 'bowling') {
+        next.screen = 'select-bowler';
+      } else if (next.myTeam) {
+        next.screen = 'mode-select';
+      } else if (next.team1 && next.team2) {
+        next.screen = 'team-select';
+      } else {
+        next.screen = 'setup';
+      }
+    }
+
+    applyMatchSnapshot(next);
+    setSavedDraft(next);
+  };
+
+  const discardSavedMatch = () => {
+    clearStoredMatch();
+    setSavedDraft(null);
+  };
+
+  const hasResumableDraft = !!(
+    savedDraft && (
+      savedDraft.team1 ||
+      savedDraft.team2 ||
+      savedDraft.myTeam ||
+      savedDraft.innings1Data ||
+      savedDraft.innings2Data ||
+      Object.keys(savedDraft.batStats || {}).length ||
+      Object.keys(savedDraft.bowlerStats || {}).length ||
+      (savedDraft.screen && !NON_MATCH_SCREENS.has(savedDraft.screen))
+    )
+  );
+
   useEffect(() => {
     const link = document.createElement('link');
     link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap';
     link.rel = 'stylesheet';
     document.head.appendChild(link);
+    setSavedDraft(loadStoredMatch());
   }, []);
+
+  useEffect(() => {
+    if (skipNextSave.current) {
+      skipNextSave.current = false;
+      return;
+    }
+
+    const inMatchFlow = !NON_MATCH_SCREENS.has(screen);
+    const hasProgress = !!(team1 || team2 || myTeam || innings1Data || innings2Data || Object.keys(batStats).length || Object.keys(bowlerStats).length);
+
+    if (!inMatchFlow && !hasProgress) {
+      return;
+    }
+
+    if (!inMatchFlow && screen === 'welcome' && !hasProgress) {
+      return;
+    }
+
+    // Don't keep a draft after explicitly returning to a clean welcome
+    if (screen === 'welcome' && !team1 && !team2 && !innings1Data && !innings2Data) {
+      clearStoredMatch();
+      setSavedDraft(null);
+      return;
+    }
+
+    const snapshot = buildSnapshot();
+    saveStoredMatch(snapshot);
+    setSavedDraft(snapshot);
+  }, [
+    screen, matchDate, team1, team2, myTeam, mode, battingOrder, currentBatsmen,
+    striker, batStats, batOuts, totalRuns, wickets, extras, battingOverHistory,
+    currentBowler, currentOver, bowlerStats, overNumber, innings1Complete,
+    innings1Data, innings2Complete, innings2Data,
+  ]);
 
   const goBack = () => {
     if (screen === 'draw') setScreen('welcome');
@@ -416,6 +653,211 @@ export default function CricketScorer() {
     );
   };
 
+  const collectPlayerCards = () => {
+    const players = {};
+
+    const ensure = (name) => {
+      if (!players[name]) {
+        players[name] = {
+          name,
+          runs: null,
+          balls: null,
+          outs: null,
+          bowlingRuns: null,
+          bowlingWickets: null,
+          overs: null,
+          wides: null,
+        };
+      }
+      return players[name];
+    };
+
+    [innings1Data, innings2Data].forEach((data) => {
+      if (!data) return;
+      if (data.batStats) {
+        Object.entries(data.batStats).forEach(([name, stats]) => {
+          const p = ensure(name);
+          p.runs = (p.runs || 0) + (stats.runs || 0);
+          p.balls = (p.balls || 0) + (stats.balls || 0);
+          p.outs = (p.outs || 0) + (data.batOuts?.[name] || 0);
+        });
+      }
+      if (data.bowlerStats) {
+        Object.entries(data.bowlerStats).forEach(([name, stats]) => {
+          const p = ensure(name);
+          p.bowlingRuns = (p.bowlingRuns || 0) + (stats.runs || 0);
+          p.bowlingWickets = (p.bowlingWickets || 0) + (stats.wickets || 0);
+          p.overs = (p.overs || 0) + (stats.overs || 0);
+          p.wides = (p.wides || 0) + (stats.wides || 0);
+        });
+      }
+    });
+
+    return Object.values(players).sort((a, b) => {
+      const aScore = (a.runs || 0) + (a.bowlingWickets || 0) * 10;
+      const bScore = (b.runs || 0) + (b.bowlingWickets || 0) * 10;
+      return bScore - aScore;
+    });
+  };
+
+  const renderMatchScorecard = () => {
+    const players = collectPlayerCards();
+    const battingInnings = [innings1Data, innings2Data].filter((d) => d?.mode === 'batting');
+    const bowlingInnings = [innings1Data, innings2Data].filter((d) => d?.mode === 'bowling');
+
+    return (
+      <div style={{ display: 'grid', gap: '1.5rem' }}>
+        <div style={{
+          backgroundColor: COLORS.black, borderRadius: '1.5rem',
+          padding: '2rem', textAlign: 'center'
+        }}>
+          <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem', fontWeight: '700' }}>
+            {team1} vs {team2}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.75rem', marginTop: '0.35rem' }}>
+            {matchDate}
+          </div>
+          <div style={{ color: 'white', fontSize: '2.75rem', fontWeight: '900', marginTop: '0.75rem' }}>
+            {innings1Data.totalRuns} - {innings2Data.totalRuns}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.85)', marginTop: '0.85rem', fontSize: '0.875rem', lineHeight: 1.5 }}>
+            <div>{innings1Data.team}: {innings1Data.totalRuns}/{innings1Data.wickets} ({innings1Data.mode})</div>
+            <div>{innings2Data.team}: {innings2Data.totalRuns}/{innings2Data.wickets} ({innings2Data.mode})</div>
+          </div>
+        </div>
+
+        {players.length > 0 && (
+          <div>
+            <h3 style={{
+              fontSize: '0.875rem', fontWeight: '800', color: COLORS.gray,
+              letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.75rem'
+            }}>Player scorecard</h3>
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              {players.map((player) => (
+                <div key={player.name} style={{
+                  padding: '1rem', backgroundColor: 'white', borderRadius: '1rem',
+                  border: '2px solid #E5E7EB'
+                }}>
+                  <div style={{ fontWeight: '900', color: COLORS.black, marginBottom: '0.65rem' }}>
+                    {player.name}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: '700', color: COLORS.gray, textTransform: 'uppercase' }}>
+                        Batting
+                      </div>
+                      <div style={{ fontWeight: '800', marginTop: '0.2rem' }}>
+                        {player.runs == null
+                          ? '—'
+                          : `${player.runs} (${player.balls}) · ${player.outs} out`}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: '700', color: COLORS.gray, textTransform: 'uppercase' }}>
+                        Bowling
+                      </div>
+                      <div style={{ fontWeight: '800', marginTop: '0.2rem' }}>
+                        {player.bowlingWickets == null
+                          ? '—'
+                          : `${player.bowlingWickets}/${player.bowlingRuns} (${Number(player.overs || 0).toFixed(1)})`}
+                      </div>
+                      {player.wides != null && (
+                        <div style={{ fontSize: '0.75rem', color: COLORS.gray, marginTop: '0.15rem' }}>
+                          {player.wides} wide{player.wides === 1 ? '' : 's'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {battingInnings.map((data, idx) => (
+          <div key={`bat-${idx}`}>
+            <h3 style={{
+              fontSize: '0.875rem', fontWeight: '800', color: COLORS.gray,
+              letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.75rem'
+            }}>
+              Batting · {data.team}
+            </h3>
+            <div style={{ display: 'grid', gap: '0.5rem' }}>
+              <div style={{
+                display: 'grid', gridTemplateColumns: '1.4fr 0.6fr 0.6fr 0.6fr',
+                gap: '0.5rem', padding: '0 0.25rem',
+                fontSize: '0.7rem', fontWeight: '700', color: COLORS.gray, textTransform: 'uppercase'
+              }}>
+                <span>Player</span><span>Runs</span><span>Balls</span><span>Outs</span>
+              </div>
+              {Object.entries(data.batStats || {}).map(([name, stats]) => (
+                <div key={name} style={{
+                  display: 'grid', gridTemplateColumns: '1.4fr 0.6fr 0.6fr 0.6fr',
+                  gap: '0.5rem', padding: '0.85rem 1rem', backgroundColor: 'white',
+                  borderRadius: '0.85rem', border: '2px solid #E5E7EB', fontWeight: '800'
+                }}>
+                  <span>{name}</span>
+                  <span>{stats.runs}</span>
+                  <span>{stats.balls}</span>
+                  <span>{data.batOuts?.[name] || 0}</span>
+                </div>
+              ))}
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                padding: '0.85rem 1rem', backgroundColor: COLORS.black, color: 'white',
+                borderRadius: '0.85rem', fontWeight: '800'
+              }}>
+                <span>Total</span>
+                <span>{data.totalRuns}/{data.wickets} · Extras {data.extras || 0}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {bowlingInnings.map((data, idx) => (
+          <div key={`bowl-${idx}`}>
+            <h3 style={{
+              fontSize: '0.875rem', fontWeight: '800', color: COLORS.gray,
+              letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.75rem'
+            }}>
+              Bowling · {data.team}
+            </h3>
+            <div style={{ display: 'grid', gap: '0.5rem' }}>
+              <div style={{
+                display: 'grid', gridTemplateColumns: '1.3fr 0.5fr 0.5fr 0.5fr 0.5fr',
+                gap: '0.4rem', padding: '0 0.25rem',
+                fontSize: '0.7rem', fontWeight: '700', color: COLORS.gray, textTransform: 'uppercase'
+              }}>
+                <span>Bowler</span><span>Overs</span><span>Runs</span><span>Wkts</span><span>Wd</span>
+              </div>
+              {Object.entries(data.bowlerStats || {}).map(([name, stats]) => (
+                <div key={name} style={{
+                  display: 'grid', gridTemplateColumns: '1.3fr 0.5fr 0.5fr 0.5fr 0.5fr',
+                  gap: '0.4rem', padding: '0.85rem 1rem', backgroundColor: 'white',
+                  borderRadius: '0.85rem', border: '2px solid #E5E7EB', fontWeight: '800'
+                }}>
+                  <span>{name}</span>
+                  <span>{Number(stats.overs || 0).toFixed(1)}</span>
+                  <span>{stats.runs}</span>
+                  <span>{stats.wickets}</span>
+                  <span>{stats.wides}</span>
+                </div>
+              ))}
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                padding: '0.85rem 1rem', backgroundColor: COLORS.black, color: 'white',
+                borderRadius: '0.85rem', fontWeight: '800'
+              }}>
+                <span>Total</span>
+                <span>{data.totalRuns}/{data.wickets} · Extras {data.extras || 0}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const ConfirmModal = ({ show, onClose, onConfirm, title, message }) => {
     if (!show) return null;
     return (
@@ -569,13 +1011,41 @@ export default function CricketScorer() {
                 Keeping the scoreboard ticking over since '25
               </p>
             </div>
+
+            {hasResumableDraft && (
+              <div style={{
+                marginBottom: '1rem', padding: '1.25rem', backgroundColor: 'white',
+                border: '2px solid #E5E7EB', borderRadius: '1.25rem'
+              }}>
+                <div style={{
+                  fontSize: '0.75rem', fontWeight: '800', color: COLORS.gray,
+                  textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem'
+                }}>
+                  Saved match
+                </div>
+                <div style={{ fontWeight: '800', color: COLORS.black, marginBottom: '1rem' }}>
+                  {draftSummaryLine(savedDraft)}
+                </div>
+                <button onClick={resumeSavedMatch} style={{
+                  width: '100%', backgroundColor: COLORS.primary, color: 'white',
+                  padding: '1.1rem', borderRadius: '3rem', border: 'none',
+                  fontSize: '1rem', fontWeight: '800', letterSpacing: '0.5px',
+                  cursor: 'pointer', marginBottom: '0.75rem', textTransform: 'uppercase'
+                }}>Resume Match</button>
+                <button onClick={discardSavedMatch} style={{
+                  width: '100%', backgroundColor: 'transparent', color: COLORS.gray,
+                  padding: '0.75rem', border: 'none', fontSize: '0.875rem',
+                  fontWeight: '700', cursor: 'pointer', textTransform: 'uppercase'
+                }}>Discard</button>
+              </div>
+            )}
             
-            <button onClick={() => setScreen('setup')} style={{
+            <button onClick={startFreshMatch} style={{
               width: '100%', backgroundColor: COLORS.black, color: 'white',
               padding: '1.25rem', borderRadius: '3rem', border: 'none',
               fontSize: '1rem', fontWeight: '800', letterSpacing: '0.5px',
               cursor: 'pointer', marginBottom: '1rem', textTransform: 'uppercase'
-            }}>Start Match</button>
+            }}>{hasResumableDraft ? 'Start New Match' : 'Start Match'}</button>
 
             <button onClick={() => setScreen('draw')} style={{
               width: '100%', backgroundColor: 'white', color: COLORS.black,
@@ -1606,26 +2076,9 @@ export default function CricketScorer() {
               fontSize: '2rem', fontWeight: '900', color: COLORS.black,
               marginBottom: '1.5rem', letterSpacing: '-0.03em', textTransform: 'uppercase',
               textAlign: 'center'
-            }}>Match Complete</h2>
-            <div style={{
-              backgroundColor: COLORS.black, borderRadius: '1.5rem',
-              padding: '2rem', marginBottom: '1.5rem', textAlign: 'center'
-            }}>
-              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.875rem', fontWeight: '700' }}>
-                {team1} vs {team2}
-              </div>
-              <div style={{ color: 'white', fontSize: '2.5rem', fontWeight: '900', marginTop: '0.75rem' }}>
-                {innings1Data.totalRuns} - {innings2Data.totalRuns}
-              </div>
-              <div style={{ color: 'rgba(255,255,255,0.8)', marginTop: '0.75rem', fontSize: '0.875rem' }}>
-                {innings1Data.team}: {innings1Data.totalRuns}/{innings1Data.wickets}
-                {' · '}
-                {innings2Data.team}: {innings2Data.totalRuns}/{innings2Data.wickets}
-              </div>
-            </div>
-            <div style={{ display: 'grid', gap: '1rem', marginBottom: '1.5rem' }}>
-              {renderInningsReview(innings1Data, '1ST INNINGS')}
-              {renderInningsReview(innings2Data, '2ND INNINGS')}
+            }}>Match Scorecard</h2>
+            <div style={{ marginBottom: '1.5rem' }}>
+              {renderMatchScorecard()}
             </div>
             <button onClick={exportToCSV}
               style={{
@@ -1637,15 +2090,9 @@ export default function CricketScorer() {
             >Download Match Report</button>
             <button
               onClick={() => {
-                setScreen('welcome');
-                setTeam1(''); setTeam2(''); setMyTeam(''); setMode('');
-                setInnings1Complete(false); setInnings2Complete(false);
-                setInnings1Data(null); setInnings2Data(null);
-                setBatStats({}); setBatOuts({}); setTotalRuns(0); setWickets(0);
-                setExtras(0); setBowlerStats({}); setOverNumber(1);
-                setCurrentBatsmen([null, null]); setStriker(0);
-                setBattingOrder(['']); setCurrentBowler(''); setCurrentOver([]);
-                setBattingOverHistory([]);
+                clearStoredMatch();
+                setSavedDraft(null);
+                resetMatchState();
               }}
               style={{
                 width: '100%', marginTop: '0.75rem', padding: '1.25rem',

@@ -21,5 +21,7 @@ Open the URL Vite prints (usually `http://localhost:5173`).
 
 - Match setup with CCC junior teams
 - Batting and bowling scoring modes
-- Live summaries, innings review, and match report CSV export
+- Autosave + resume if the browser is closed mid-match
+- Live summaries, innings review, and a full match scorecard
+- Match report CSV export
 - Season draw / fixtures view
