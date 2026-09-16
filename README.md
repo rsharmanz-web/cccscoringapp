@@ -19,6 +19,7 @@ Open the URL Vite prints (usually `http://localhost:5173`).
 
 ## Features
 
+- Year 3 / Year 4 grade selection at match start
 - Match setup with CCC junior teams
 - Batting and bowling scoring modes
 - Autosave + resume if the browser is closed mid-match

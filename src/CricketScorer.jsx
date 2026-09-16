@@ -30,6 +30,21 @@ const COLORS = {
   gray: '#6B7280'
 };
 
+const YEAR_LEVELS = {
+  year3: {
+    id: 'year3',
+    label: 'Year 3',
+    shortLabel: 'Y3',
+    description: 'Junior grade scoring for Year 3',
+  },
+  year4: {
+    id: 'year4',
+    label: 'Year 4',
+    shortLabel: 'Y4',
+    description: 'Junior grade scoring for Year 4',
+  },
+};
+
 const STORAGE_KEY = 'ccc-active-match';
 const NON_MATCH_SCREENS = new Set(['welcome', 'draw', 'draw-fixtures']);
 
@@ -62,23 +77,28 @@ const clearStoredMatch = () => {
 
 const draftSummaryLine = (draft) => {
   if (!draft) return '';
+  const yearLabel = YEAR_LEVELS[draft.yearLevel]?.shortLabel;
+  const yearPrefix = yearLabel ? `${yearLabel} · ` : '';
   const teams = draft.team1 && draft.team2
     ? `${draft.team1} vs ${draft.team2}`
-    : 'Match in progress';
+    : draft.yearLevel
+      ? `${YEAR_LEVELS[draft.yearLevel]?.label || 'Grade'} match`
+      : 'Match in progress';
   if (draft.innings1Complete && draft.innings2Complete && draft.innings1Data && draft.innings2Data) {
-    return `${teams} · ${draft.innings1Data.totalRuns}-${draft.innings2Data.totalRuns}`;
+    return `${yearPrefix}${teams} · ${draft.innings1Data.totalRuns}-${draft.innings2Data.totalRuns}`;
   }
   if (draft.innings1Complete && draft.innings1Data) {
-    return `${teams} · 1st innings ${draft.innings1Data.totalRuns}/${draft.innings1Data.wickets}`;
+    return `${yearPrefix}${teams} · 1st innings ${draft.innings1Data.totalRuns}/${draft.innings1Data.wickets}`;
   }
   if (draft.totalRuns || draft.wickets) {
-    return `${teams} · Live ${draft.totalRuns}/${draft.wickets}`;
+    return `${yearPrefix}${teams} · Live ${draft.totalRuns}/${draft.wickets}`;
   }
-  return teams;
+  return `${yearPrefix}${teams}`;
 };
 
 export default function CricketScorer() {
   const [screen, setScreen] = useState('welcome');
+  const [yearLevel, setYearLevel] = useState('');
   const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]);
   const [team1, setTeam1] = useState('');
   const [team2, setTeam2] = useState('');
@@ -87,6 +107,7 @@ export default function CricketScorer() {
   const [showMenu, setShowMenu] = useState(false);
   const [selectedRound, setSelectedRound] = useState(null);
   const [savedDraft, setSavedDraft] = useState(null);
+  const yearConfig = YEAR_LEVELS[yearLevel] || null;
   
   const [battingOrder, setBattingOrder] = useState(['']);
   const [currentBatsmen, setCurrentBatsmen] = useState([null, null]);
@@ -118,6 +139,7 @@ export default function CricketScorer() {
 
   const resetMatchState = () => {
     setScreen('welcome');
+    setYearLevel('');
     setMatchDate(new Date().toISOString().split('T')[0]);
     setTeam1('');
     setTeam2('');
@@ -154,6 +176,7 @@ export default function CricketScorer() {
     if (!snapshot) return;
     skipNextSave.current = true;
     setScreen(snapshot.screen || 'welcome');
+    setYearLevel(snapshot.yearLevel || '');
     setMatchDate(snapshot.matchDate || new Date().toISOString().split('T')[0]);
     setTeam1(snapshot.team1 || '');
     setTeam2(snapshot.team2 || '');
@@ -190,6 +213,7 @@ export default function CricketScorer() {
     version: 1,
     savedAt: Date.now(),
     screen,
+    yearLevel,
     matchDate,
     team1,
     team2,
@@ -218,7 +242,7 @@ export default function CricketScorer() {
     clearStoredMatch();
     setSavedDraft(null);
     resetMatchState();
-    setScreen('setup');
+    setScreen('year-select');
   };
 
   const resumeSavedMatch = () => {
@@ -241,8 +265,10 @@ export default function CricketScorer() {
         next.screen = 'mode-select';
       } else if (next.team1 && next.team2) {
         next.screen = 'team-select';
-      } else {
+      } else if (next.yearLevel) {
         next.screen = 'setup';
+      } else {
+        next.screen = 'year-select';
       }
     }
 
@@ -257,6 +283,7 @@ export default function CricketScorer() {
 
   const hasResumableDraft = !!(
     savedDraft && (
+      savedDraft.yearLevel ||
       savedDraft.team1 ||
       savedDraft.team2 ||
       savedDraft.myTeam ||
@@ -283,7 +310,7 @@ export default function CricketScorer() {
     }
 
     const inMatchFlow = !NON_MATCH_SCREENS.has(screen);
-    const hasProgress = !!(team1 || team2 || myTeam || innings1Data || innings2Data || Object.keys(batStats).length || Object.keys(bowlerStats).length);
+    const hasProgress = !!(yearLevel || team1 || team2 || myTeam || innings1Data || innings2Data || Object.keys(batStats).length || Object.keys(bowlerStats).length);
 
     if (!inMatchFlow && !hasProgress) {
       return;
@@ -294,7 +321,7 @@ export default function CricketScorer() {
     }
 
     // Don't keep a draft after explicitly returning to a clean welcome
-    if (screen === 'welcome' && !team1 && !team2 && !innings1Data && !innings2Data) {
+    if (screen === 'welcome' && !yearLevel && !team1 && !team2 && !innings1Data && !innings2Data) {
       clearStoredMatch();
       setSavedDraft(null);
       return;
@@ -304,7 +331,7 @@ export default function CricketScorer() {
     saveStoredMatch(snapshot);
     setSavedDraft(snapshot);
   }, [
-    screen, matchDate, team1, team2, myTeam, mode, battingOrder, currentBatsmen,
+    screen, yearLevel, matchDate, team1, team2, myTeam, mode, battingOrder, currentBatsmen,
     striker, batStats, batOuts, totalRuns, wickets, extras, battingOverHistory,
     currentBowler, currentOver, bowlerStats, overNumber, innings1Complete,
     innings1Data, innings2Complete, innings2Data,
@@ -313,7 +340,8 @@ export default function CricketScorer() {
   const goBack = () => {
     if (screen === 'draw') setScreen('welcome');
     else if (screen === 'draw-fixtures') { setScreen('draw'); setSelectedRound(null); }
-    else if (screen === 'setup') setScreen('welcome');
+    else if (screen === 'year-select') setScreen('welcome');
+    else if (screen === 'setup') setScreen('year-select');
     else if (screen === 'team-select') setScreen('setup');
     else if (screen === 'mode-select') setScreen('team-select');
     else if (screen === 'batting-order') setScreen('mode-select');
@@ -521,6 +549,7 @@ export default function CricketScorer() {
   const exportToCSV = () => {
     let csv = 'Cornwall Cricket Club - Jr Cricket Match Report\n\n';
     csv += `Date,${matchDate}\n`;
+    csv += `Year Level,${yearConfig?.label || yearLevel || ''}\n`;
     csv += `Teams,${team1} vs ${team2}\n`;
     csv += formatInningsCsv('1st Innings', innings1Data);
     csv += formatInningsCsv('2nd Innings', innings2Data);
@@ -529,7 +558,7 @@ export default function CricketScorer() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `CCC-Match-${matchDate}.csv`;
+    a.download = `CCC-Match-${yearConfig?.shortLabel || 'Jr'}-${matchDate}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
     alert('Match data downloaded! Email to rahul@cornwallcricket.co.nz');
@@ -715,7 +744,7 @@ export default function CricketScorer() {
             {team1} vs {team2}
           </div>
           <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.75rem', marginTop: '0.35rem' }}>
-            {matchDate}
+            {yearConfig ? `${yearConfig.label} · ` : ''}{matchDate}
           </div>
           <div style={{ color: 'white', fontSize: '2.75rem', fontWeight: '900', marginTop: '0.75rem' }}>
             {innings1Data.totalRuns} - {innings2Data.totalRuns}
@@ -1057,13 +1086,65 @@ export default function CricketScorer() {
           </div>
         )}
 
+        {/* Year Level Selection */}
+        {screen === 'year-select' && (
+          <div style={{ paddingTop: '2rem' }}>
+            <h2 style={{
+              fontSize: '2rem', fontWeight: '900', color: COLORS.black,
+              marginBottom: '1rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
+            }}>Select Year Level</h2>
+            <p style={{ color: COLORS.gray, marginBottom: '2rem', fontSize: '1rem' }}>
+              Choose the grade you are scoring today
+            </p>
+
+            {Object.values(YEAR_LEVELS).map((year) => (
+              <button
+                key={year.id}
+                onClick={() => {
+                  setYearLevel(year.id);
+                  setScreen('setup');
+                }}
+                style={{
+                  width: '100%',
+                  backgroundColor: yearLevel === year.id ? COLORS.black : 'white',
+                  color: yearLevel === year.id ? 'white' : COLORS.black,
+                  padding: '1.5rem',
+                  borderRadius: '1rem',
+                  border: `2px solid ${COLORS.black}`,
+                  fontSize: '1.25rem',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  marginBottom: '1rem',
+                  textAlign: 'left',
+                  letterSpacing: '-0.01em'
+                }}
+              >
+                <div>{year.label}</div>
+                <div style={{
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  marginTop: '0.35rem',
+                  opacity: 0.75
+                }}>
+                  {year.description}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Setup Screen */}
         {screen === 'setup' && (
           <div style={{ paddingTop: '2rem' }}>
             <h2 style={{
               fontSize: '2rem', fontWeight: '900', color: COLORS.black,
-              marginBottom: '2rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
+              marginBottom: '0.75rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
             }}>MATCH SETUP</h2>
+            {yearConfig && (
+              <p style={{ color: COLORS.gray, marginBottom: '2rem', fontSize: '1rem', fontWeight: '600' }}>
+                {yearConfig.label}
+              </p>
+            )}
             
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', 
