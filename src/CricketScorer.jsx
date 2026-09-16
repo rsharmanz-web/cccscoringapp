@@ -134,6 +134,10 @@ export default function CricketScorer() {
   const [innings1Data, setInnings1Data] = useState(null);
   const [innings2Complete, setInnings2Complete] = useState(false);
   const [innings2Data, setInnings2Data] = useState(null);
+  const [showEmailReportModal, setShowEmailReportModal] = useState(false);
+  const [reportEmail, setReportEmail] = useState('');
+  const [reportEmailError, setReportEmailError] = useState('');
+  const [reportEmailStatus, setReportEmailStatus] = useState('');
 
   const skipNextSave = useRef(true);
 
@@ -170,6 +174,9 @@ export default function CricketScorer() {
     setInnings1Data(null);
     setInnings2Complete(false);
     setInnings2Data(null);
+    setShowEmailReportModal(false);
+    setReportEmailError('');
+    setReportEmailStatus('');
   };
 
   const applyMatchSnapshot = (snapshot) => {
@@ -301,6 +308,12 @@ export default function CricketScorer() {
     link.rel = 'stylesheet';
     document.head.appendChild(link);
     setSavedDraft(loadStoredMatch());
+    try {
+      const remembered = localStorage.getItem('ccc-report-email');
+      if (remembered) setReportEmail(remembered);
+    } catch {
+      // Ignore
+    }
   }, []);
 
   useEffect(() => {
@@ -546,22 +559,79 @@ export default function CricketScorer() {
     return csv;
   };
 
-  const exportToCSV = () => {
+  const buildMatchCsv = () => {
     let csv = 'Cornwall Cricket Club - Jr Cricket Match Report\n\n';
     csv += `Date,${matchDate}\n`;
     csv += `Year Level,${yearConfig?.label || yearLevel || ''}\n`;
     csv += `Teams,${team1} vs ${team2}\n`;
     csv += formatInningsCsv('1st Innings', innings1Data);
     csv += formatInningsCsv('2nd Innings', innings2Data);
+    return csv;
+  };
 
+  const matchReportFilename = () => `CCC-Match-${yearConfig?.shortLabel || 'Jr'}-${matchDate}.csv`;
+
+  const downloadMatchCsv = (csv = buildMatchCsv()) => {
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `CCC-Match-${yearConfig?.shortLabel || 'Jr'}-${matchDate}.csv`;
+    a.download = matchReportFilename();
     a.click();
     window.URL.revokeObjectURL(url);
-    alert('Match data downloaded! Email to rahul@cornwallcricket.co.nz');
+  };
+
+  const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+  const openEmailReportModal = () => {
+    setReportEmailError('');
+    setReportEmailStatus('');
+    setShowEmailReportModal(true);
+  };
+
+  const sendMatchReportEmail = () => {
+    const email = reportEmail.trim();
+    if (!isValidEmail(email)) {
+      setReportEmailError('Enter a valid email address');
+      return;
+    }
+
+    setReportEmailError('');
+    const csv = buildMatchCsv();
+    const filename = matchReportFilename();
+    downloadMatchCsv(csv);
+
+    try {
+      localStorage.setItem('ccc-report-email', email);
+    } catch {
+      // Ignore
+    }
+
+    const subject = `CCC Match Report: ${team1} vs ${team2}`;
+    const body = [
+      'Cornwall Cricket Club match report',
+      '',
+      `Date: ${matchDate}`,
+      yearConfig ? `Year level: ${yearConfig.label}` : null,
+      `Teams: ${team1} vs ${team2}`,
+      innings1Data ? `1st innings (${innings1Data.team}): ${innings1Data.totalRuns}/${innings1Data.wickets}` : null,
+      innings2Data ? `2nd innings (${innings2Data.team}): ${innings2Data.totalRuns}/${innings2Data.wickets}` : null,
+      '',
+      `Please attach the downloaded file "${filename}" from your device before sending.`,
+      '',
+      'Full report (CSV):',
+      csv,
+    ].filter(Boolean).join('\n');
+
+    const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
+    setReportEmailStatus('Report downloaded. Your email app should open next — attach the file if needed, then send.');
+  };
+
+  const downloadMatchReportOnly = () => {
+    downloadMatchCsv();
+    setShowEmailReportModal(false);
+    setReportEmailStatus('');
   };
 
   const renderLiveBattingSummary = () => (
@@ -2161,14 +2231,14 @@ export default function CricketScorer() {
             <div style={{ marginBottom: '1.5rem' }}>
               {renderMatchScorecard()}
             </div>
-            <button onClick={exportToCSV}
+            <button onClick={openEmailReportModal}
               style={{
                 width: '100%', padding: '1.25rem', backgroundColor: COLORS.primary,
                 color: 'white', border: 'none', borderRadius: '3rem',
                 fontSize: '1rem', fontWeight: '800', cursor: 'pointer',
                 textTransform: 'uppercase'
               }}
-            >Download Match Report</button>
+            >Email Match Report</button>
             <button
               onClick={() => {
                 clearStoredMatch();
@@ -2186,6 +2256,94 @@ export default function CricketScorer() {
           </div>
         )}
       </div>
+
+      {showEmailReportModal && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 60, padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: 'white', borderRadius: '1.5rem',
+            padding: '2rem', maxWidth: '24rem', width: '100%'
+          }}>
+            <h3 style={{
+              fontSize: '1.5rem', fontWeight: '900', marginBottom: '0.75rem',
+              color: COLORS.black, letterSpacing: '-0.02em', textTransform: 'uppercase'
+            }}>
+              Email report
+            </h3>
+            <p style={{ color: COLORS.gray, marginBottom: '1.25rem', lineHeight: 1.5 }}>
+              Enter the email address that should receive this match report.
+            </p>
+            <label style={{
+              display: 'block', marginBottom: '0.5rem', fontWeight: '700',
+              fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px',
+              color: COLORS.gray
+            }}>
+              Email address
+            </label>
+            <input
+              type="email"
+              value={reportEmail}
+              onChange={(e) => {
+                setReportEmail(e.target.value);
+                setReportEmailError('');
+                setReportEmailStatus('');
+              }}
+              placeholder="name@email.com"
+              autoComplete="email"
+              style={{
+                width: '100%', padding: '1rem', border: `2px solid ${reportEmailError ? COLORS.secondary : '#E5E7EB'}`,
+                borderRadius: '0.75rem', fontSize: '1rem', fontWeight: '600',
+                marginBottom: reportEmailError || reportEmailStatus ? '0.75rem' : '1.25rem'
+              }}
+            />
+            {reportEmailError && (
+              <p style={{ color: COLORS.secondary, fontSize: '0.875rem', fontWeight: '600', marginBottom: '1rem' }}>
+                {reportEmailError}
+              </p>
+            )}
+            {reportEmailStatus && (
+              <p style={{ color: COLORS.primary, fontSize: '0.875rem', fontWeight: '600', marginBottom: '1rem', lineHeight: 1.4 }}>
+                {reportEmailStatus}
+              </p>
+            )}
+            <button
+              onClick={sendMatchReportEmail}
+              style={{
+                width: '100%', padding: '1rem', backgroundColor: COLORS.black, color: 'white',
+                border: 'none', borderRadius: '3rem', fontSize: '0.875rem',
+                fontWeight: '800', cursor: 'pointer', textTransform: 'uppercase',
+                marginBottom: '0.75rem'
+              }}
+            >
+              Send report
+            </button>
+            <button
+              onClick={downloadMatchReportOnly}
+              style={{
+                width: '100%', padding: '0.85rem', backgroundColor: 'transparent',
+                color: COLORS.black, border: `2px solid ${COLORS.black}`, borderRadius: '3rem',
+                fontSize: '0.875rem', fontWeight: '800', cursor: 'pointer',
+                textTransform: 'uppercase', marginBottom: '0.5rem'
+              }}
+            >
+              Download only
+            </button>
+            <button
+              onClick={() => setShowEmailReportModal(false)}
+              style={{
+                width: '100%', padding: '0.75rem', background: 'none', border: 'none',
+                color: COLORS.gray, fontSize: '0.875rem', fontWeight: '700',
+                cursor: 'pointer', textTransform: 'uppercase'
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

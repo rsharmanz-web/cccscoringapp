@@ -24,5 +24,5 @@ Open the URL Vite prints (usually `http://localhost:5173`).
 - Batting and bowling scoring modes
 - Autosave + resume if the browser is closed mid-match
 - Live summaries, innings review, and a full match scorecard
-- Match report CSV export
+- Match report CSV export with email address prompt
 - Season draw / fixtures view
