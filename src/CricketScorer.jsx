@@ -1,88 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, BarChart3, Menu, X, Plus, Minus } from 'lucide-react';
 
-const TEAMS = [
-  'Super Tigers', 'Raptors', 'Hammerheads', 'Wolfpack', 'Vipers',
-  'Striking Cobras', 'Grizzlies', 'Manta Rays', 'Mighty Eagles', 'CZ'
-];
-
-const DRAW_DATA = {
-  rounds: [
-    {
-      date: 'Friday, 7 November 2024',
-      startTime: '6:00 PM',
-      fixtures: [
-        { pitch: 11, team1: 'Super Tigers', team2: 'Hammerheads' },
-        { pitch: 13, team1: 'Mighty Eagles', team2: 'Raptors' },
-        { pitch: 15, team1: 'Manta Rays', team2: 'Vipers' },
-        { pitch: 17, team1: 'Grizzlies', team2: 'Wolfpack' },
-        { pitch: null, team1: 'Striking Cobras', team2: 'bye' }
-      ]
-    }
-  ]
-};
-
-const COLORS = {
-  primary: '#10B981',
-  secondary: '#EF4444',
-  accent: '#8B5CF6',
-  black: '#111827',
-  gray: '#6B7280'
-};
-
-const YEAR_LEVELS = {
-  year3: {
-    id: 'year3',
-    label: 'Year 3',
-    shortLabel: 'Y3',
-    description: 'Junior grade scoring for Year 3',
-  },
-  year4: {
-    id: 'year4',
-    label: 'Year 4',
-    shortLabel: 'Y4',
-    description: 'Junior grade scoring for Year 4',
-  },
-};
-
-const STORAGE_KEY = 'ccc-active-match';
 const NON_MATCH_SCREENS = new Set(['welcome', 'draw', 'draw-fixtures']);
 
-const loadStoredMatch = () => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed?.version === 1 ? parsed : null;
-  } catch {
-    return null;
-  }
-};
-
-const saveStoredMatch = (snapshot) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    // Ignore quota / private mode failures
-  }
-};
-
-const clearStoredMatch = () => {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Ignore
-  }
-};
-
-const draftSummaryLine = (draft) => {
+const draftSummaryLine = (draft, yearLevels) => {
   if (!draft) return '';
-  const yearLabel = YEAR_LEVELS[draft.yearLevel]?.shortLabel;
+  const yearLabel = yearLevels[draft.yearLevel]?.shortLabel;
   const yearPrefix = yearLabel ? `${yearLabel} · ` : '';
   const teams = draft.team1 && draft.team2
     ? `${draft.team1} vs ${draft.team2}`
     : draft.yearLevel
-      ? `${YEAR_LEVELS[draft.yearLevel]?.label || 'Grade'} match`
+      ? `${yearLevels[draft.yearLevel]?.label || 'Grade'} match`
       : 'Match in progress';
   if (draft.innings1Complete && draft.innings2Complete && draft.innings1Data && draft.innings2Data) {
     return `${yearPrefix}${teams} · ${draft.innings1Data.totalRuns}-${draft.innings2Data.totalRuns}`;
@@ -96,7 +24,45 @@ const draftSummaryLine = (draft) => {
   return `${yearPrefix}${teams}`;
 };
 
-export default function CricketScorer() {
+export default function CricketScorer({ club }) {
+  const COLORS = club.colors;
+  const TEAMS = club.teams;
+  const DRAW_DATA = club.draw;
+  const YEAR_LEVELS = club.yearLevels;
+  const storageKey = `${club.id}-active-match`;
+  const reportEmailKey = `${club.id}-report-email`;
+  const legacyStorageKey = club.id === 'cornwall' ? 'ccc-active-match' : null;
+  const legacyReportEmailKey = club.id === 'cornwall' ? 'ccc-report-email' : null;
+
+  const loadStoredMatch = () => {
+    try {
+      const raw = localStorage.getItem(storageKey) || (legacyStorageKey ? localStorage.getItem(legacyStorageKey) : null);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed?.version === 1 ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveStoredMatch = (snapshot) => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(snapshot));
+      if (legacyStorageKey) localStorage.removeItem(legacyStorageKey);
+    } catch {
+      // Ignore quota / private mode failures
+    }
+  };
+
+  const clearStoredMatch = () => {
+    try {
+      localStorage.removeItem(storageKey);
+      if (legacyStorageKey) localStorage.removeItem(legacyStorageKey);
+    } catch {
+      // Ignore
+    }
+  };
+
   const [screen, setScreen] = useState('welcome');
   const [yearLevel, setYearLevel] = useState('');
   const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]);
@@ -309,12 +275,14 @@ export default function CricketScorer() {
     document.head.appendChild(link);
     setSavedDraft(loadStoredMatch());
     try {
-      const remembered = localStorage.getItem('ccc-report-email');
+      const remembered = localStorage.getItem(reportEmailKey)
+        || (legacyReportEmailKey ? localStorage.getItem(legacyReportEmailKey) : null);
       if (remembered) setReportEmail(remembered);
     } catch {
       // Ignore
     }
-  }, []);
+    document.title = `${club.shortName} Jr Cricket Scorer`;
+  }, [club.id, club.shortName, reportEmailKey, legacyReportEmailKey]);
 
   useEffect(() => {
     if (skipNextSave.current) {
@@ -560,7 +528,7 @@ export default function CricketScorer() {
   };
 
   const buildMatchCsv = () => {
-    let csv = 'Cornwall Cricket Club - Jr Cricket Match Report\n\n';
+    let csv = `${club.name} - Jr Cricket Match Report\n\n`;
     csv += `Date,${matchDate}\n`;
     csv += `Year Level,${yearConfig?.label || yearLevel || ''}\n`;
     csv += `Teams,${team1} vs ${team2}\n`;
@@ -569,7 +537,7 @@ export default function CricketScorer() {
     return csv;
   };
 
-  const matchReportFilename = () => `CCC-Match-${yearConfig?.shortLabel || 'Jr'}-${matchDate}.csv`;
+  const matchReportFilename = () => `${club.reportPrefix}-Match-${yearConfig?.shortLabel || 'Jr'}-${matchDate}.csv`;
 
   const downloadMatchCsv = (csv = buildMatchCsv()) => {
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -602,14 +570,15 @@ export default function CricketScorer() {
     downloadMatchCsv(csv);
 
     try {
-      localStorage.setItem('ccc-report-email', email);
+      localStorage.setItem(reportEmailKey, email);
+      if (legacyReportEmailKey) localStorage.removeItem(legacyReportEmailKey);
     } catch {
       // Ignore
     }
 
-    const subject = `CCC Match Report: ${team1} vs ${team2}`;
+    const subject = `${club.shortName} Match Report: ${team1} vs ${team2}`;
     const body = [
-      'Cornwall Cricket Club match report',
+      `${club.name} match report`,
       '',
       `Date: ${matchDate}`,
       yearConfig ? `Year level: ${yearConfig.label}` : null,
@@ -1018,7 +987,7 @@ export default function CricketScorer() {
             color: 'white', fontSize: '1rem', fontWeight: '800',
             letterSpacing: '0.5px', textTransform: 'uppercase',
             flex: 1, textAlign: 'center'
-          }}>CCC Score Centre</h1>
+          }}>{club.headerTitle}</h1>
           
           {(screen === 'batting-score' || screen === 'bowling-score') && (
             <button 
@@ -1104,10 +1073,10 @@ export default function CricketScorer() {
                 fontSize: '2.5rem', fontWeight: '900', lineHeight: '1.1',
                 color: COLORS.black, marginBottom: '1rem', letterSpacing: '-0.03em'
               }}>
-                Cornwall Cricket Club<br/>Score Centre
+                {club.name}<br/>Score Centre
               </h1>
               <p style={{ fontSize: '1rem', color: COLORS.gray, fontWeight: '500' }}>
-                Keeping the scoreboard ticking over since '25
+                {club.tagline}
               </p>
             </div>
 
@@ -1123,7 +1092,7 @@ export default function CricketScorer() {
                   Saved match
                 </div>
                 <div style={{ fontWeight: '800', color: COLORS.black, marginBottom: '1rem' }}>
-                  {draftSummaryLine(savedDraft)}
+                  {draftSummaryLine(savedDraft, YEAR_LEVELS)}
                 </div>
                 <button onClick={resumeSavedMatch} style={{
                   width: '100%', backgroundColor: COLORS.primary, color: 'white',
