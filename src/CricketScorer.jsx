@@ -1,84 +1,70 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, BarChart3, Menu, X, Plus, Minus } from 'lucide-react';
 
-const TEAMS = [
-  'Super Tigers', 'Raptors', 'Hammerheads', 'Wolfpack', 'Vipers',
-  'Striking Cobras', 'Grizzlies', 'Manta Rays', 'Mighty Eagles', 'CZ'
-];
-
-const DRAW_DATA = {
-  rounds: [
-    {
-      date: 'Friday, 7 November 2024',
-      startTime: '6:00 PM',
-      fixtures: [
-        { pitch: 11, team1: 'Super Tigers', team2: 'Hammerheads' },
-        { pitch: 13, team1: 'Mighty Eagles', team2: 'Raptors' },
-        { pitch: 15, team1: 'Manta Rays', team2: 'Vipers' },
-        { pitch: 17, team1: 'Grizzlies', team2: 'Wolfpack' },
-        { pitch: null, team1: 'Striking Cobras', team2: 'bye' }
-      ]
-    }
-  ]
-};
-
-const COLORS = {
-  primary: '#10B981',
-  secondary: '#EF4444',
-  accent: '#8B5CF6',
-  black: '#111827',
-  gray: '#6B7280'
-};
-
-const STORAGE_KEY = 'ccc-active-match';
 const NON_MATCH_SCREENS = new Set(['welcome', 'draw', 'draw-fixtures']);
 
-const loadStoredMatch = () => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed?.version === 1 ? parsed : null;
-  } catch {
-    return null;
-  }
-};
-
-const saveStoredMatch = (snapshot) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    // Ignore quota / private mode failures
-  }
-};
-
-const clearStoredMatch = () => {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Ignore
-  }
-};
-
-const draftSummaryLine = (draft) => {
+const draftSummaryLine = (draft, yearLevels) => {
   if (!draft) return '';
+  const yearLabel = yearLevels[draft.yearLevel]?.shortLabel;
+  const yearPrefix = yearLabel ? `${yearLabel} · ` : '';
   const teams = draft.team1 && draft.team2
     ? `${draft.team1} vs ${draft.team2}`
-    : 'Match in progress';
+    : draft.yearLevel
+      ? `${yearLevels[draft.yearLevel]?.label || 'Grade'} match`
+      : 'Match in progress';
   if (draft.innings1Complete && draft.innings2Complete && draft.innings1Data && draft.innings2Data) {
-    return `${teams} · ${draft.innings1Data.totalRuns}-${draft.innings2Data.totalRuns}`;
+    return `${yearPrefix}${teams} · ${draft.innings1Data.totalRuns}-${draft.innings2Data.totalRuns}`;
   }
   if (draft.innings1Complete && draft.innings1Data) {
-    return `${teams} · 1st innings ${draft.innings1Data.totalRuns}/${draft.innings1Data.wickets}`;
+    return `${yearPrefix}${teams} · 1st innings ${draft.innings1Data.totalRuns}/${draft.innings1Data.wickets}`;
   }
   if (draft.totalRuns || draft.wickets) {
-    return `${teams} · Live ${draft.totalRuns}/${draft.wickets}`;
+    return `${yearPrefix}${teams} · Live ${draft.totalRuns}/${draft.wickets}`;
   }
-  return teams;
+  return `${yearPrefix}${teams}`;
 };
 
-export default function CricketScorer() {
+export default function CricketScorer({ club }) {
+  const COLORS = club.colors;
+  const TEAMS = club.teams;
+  const DRAW_DATA = club.draw;
+  const YEAR_LEVELS = club.yearLevels;
+  const storageKey = `${club.id}-active-match`;
+  const reportEmailKey = `${club.id}-report-email`;
+  const legacyStorageKey = club.id === 'cornwall' ? 'ccc-active-match' : null;
+  const legacyReportEmailKey = club.id === 'cornwall' ? 'ccc-report-email' : null;
+
+  const loadStoredMatch = () => {
+    try {
+      const raw = localStorage.getItem(storageKey) || (legacyStorageKey ? localStorage.getItem(legacyStorageKey) : null);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed?.version === 1 ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveStoredMatch = (snapshot) => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(snapshot));
+      if (legacyStorageKey) localStorage.removeItem(legacyStorageKey);
+    } catch {
+      // Ignore quota / private mode failures
+    }
+  };
+
+  const clearStoredMatch = () => {
+    try {
+      localStorage.removeItem(storageKey);
+      if (legacyStorageKey) localStorage.removeItem(legacyStorageKey);
+    } catch {
+      // Ignore
+    }
+  };
+
   const [screen, setScreen] = useState('welcome');
+  const [yearLevel, setYearLevel] = useState('');
   const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]);
   const [team1, setTeam1] = useState('');
   const [team2, setTeam2] = useState('');
@@ -87,6 +73,7 @@ export default function CricketScorer() {
   const [showMenu, setShowMenu] = useState(false);
   const [selectedRound, setSelectedRound] = useState(null);
   const [savedDraft, setSavedDraft] = useState(null);
+  const yearConfig = YEAR_LEVELS[yearLevel] || null;
   
   const [battingOrder, setBattingOrder] = useState(['']);
   const [currentBatsmen, setCurrentBatsmen] = useState([null, null]);
@@ -113,11 +100,16 @@ export default function CricketScorer() {
   const [innings1Data, setInnings1Data] = useState(null);
   const [innings2Complete, setInnings2Complete] = useState(false);
   const [innings2Data, setInnings2Data] = useState(null);
+  const [showEmailReportModal, setShowEmailReportModal] = useState(false);
+  const [reportEmail, setReportEmail] = useState('');
+  const [reportEmailError, setReportEmailError] = useState('');
+  const [reportEmailStatus, setReportEmailStatus] = useState('');
 
   const skipNextSave = useRef(true);
 
   const resetMatchState = () => {
     setScreen('welcome');
+    setYearLevel('');
     setMatchDate(new Date().toISOString().split('T')[0]);
     setTeam1('');
     setTeam2('');
@@ -148,12 +140,16 @@ export default function CricketScorer() {
     setInnings1Data(null);
     setInnings2Complete(false);
     setInnings2Data(null);
+    setShowEmailReportModal(false);
+    setReportEmailError('');
+    setReportEmailStatus('');
   };
 
   const applyMatchSnapshot = (snapshot) => {
     if (!snapshot) return;
     skipNextSave.current = true;
     setScreen(snapshot.screen || 'welcome');
+    setYearLevel(snapshot.yearLevel || '');
     setMatchDate(snapshot.matchDate || new Date().toISOString().split('T')[0]);
     setTeam1(snapshot.team1 || '');
     setTeam2(snapshot.team2 || '');
@@ -190,6 +186,7 @@ export default function CricketScorer() {
     version: 1,
     savedAt: Date.now(),
     screen,
+    yearLevel,
     matchDate,
     team1,
     team2,
@@ -218,7 +215,7 @@ export default function CricketScorer() {
     clearStoredMatch();
     setSavedDraft(null);
     resetMatchState();
-    setScreen('setup');
+    setScreen('year-select');
   };
 
   const resumeSavedMatch = () => {
@@ -241,8 +238,10 @@ export default function CricketScorer() {
         next.screen = 'mode-select';
       } else if (next.team1 && next.team2) {
         next.screen = 'team-select';
-      } else {
+      } else if (next.yearLevel) {
         next.screen = 'setup';
+      } else {
+        next.screen = 'year-select';
       }
     }
 
@@ -257,6 +256,7 @@ export default function CricketScorer() {
 
   const hasResumableDraft = !!(
     savedDraft && (
+      savedDraft.yearLevel ||
       savedDraft.team1 ||
       savedDraft.team2 ||
       savedDraft.myTeam ||
@@ -274,7 +274,15 @@ export default function CricketScorer() {
     link.rel = 'stylesheet';
     document.head.appendChild(link);
     setSavedDraft(loadStoredMatch());
-  }, []);
+    try {
+      const remembered = localStorage.getItem(reportEmailKey)
+        || (legacyReportEmailKey ? localStorage.getItem(legacyReportEmailKey) : null);
+      if (remembered) setReportEmail(remembered);
+    } catch {
+      // Ignore
+    }
+    document.title = `${club.shortName} Jr Cricket Scorer`;
+  }, [club.id, club.shortName, reportEmailKey, legacyReportEmailKey]);
 
   useEffect(() => {
     if (skipNextSave.current) {
@@ -283,7 +291,7 @@ export default function CricketScorer() {
     }
 
     const inMatchFlow = !NON_MATCH_SCREENS.has(screen);
-    const hasProgress = !!(team1 || team2 || myTeam || innings1Data || innings2Data || Object.keys(batStats).length || Object.keys(bowlerStats).length);
+    const hasProgress = !!(yearLevel || team1 || team2 || myTeam || innings1Data || innings2Data || Object.keys(batStats).length || Object.keys(bowlerStats).length);
 
     if (!inMatchFlow && !hasProgress) {
       return;
@@ -294,7 +302,7 @@ export default function CricketScorer() {
     }
 
     // Don't keep a draft after explicitly returning to a clean welcome
-    if (screen === 'welcome' && !team1 && !team2 && !innings1Data && !innings2Data) {
+    if (screen === 'welcome' && !yearLevel && !team1 && !team2 && !innings1Data && !innings2Data) {
       clearStoredMatch();
       setSavedDraft(null);
       return;
@@ -304,7 +312,7 @@ export default function CricketScorer() {
     saveStoredMatch(snapshot);
     setSavedDraft(snapshot);
   }, [
-    screen, matchDate, team1, team2, myTeam, mode, battingOrder, currentBatsmen,
+    screen, yearLevel, matchDate, team1, team2, myTeam, mode, battingOrder, currentBatsmen,
     striker, batStats, batOuts, totalRuns, wickets, extras, battingOverHistory,
     currentBowler, currentOver, bowlerStats, overNumber, innings1Complete,
     innings1Data, innings2Complete, innings2Data,
@@ -313,7 +321,8 @@ export default function CricketScorer() {
   const goBack = () => {
     if (screen === 'draw') setScreen('welcome');
     else if (screen === 'draw-fixtures') { setScreen('draw'); setSelectedRound(null); }
-    else if (screen === 'setup') setScreen('welcome');
+    else if (screen === 'year-select') setScreen('welcome');
+    else if (screen === 'setup') setScreen('year-select');
     else if (screen === 'team-select') setScreen('setup');
     else if (screen === 'mode-select') setScreen('team-select');
     else if (screen === 'batting-order') setScreen('mode-select');
@@ -518,21 +527,80 @@ export default function CricketScorer() {
     return csv;
   };
 
-  const exportToCSV = () => {
-    let csv = 'Cornwall Cricket Club - Jr Cricket Match Report\n\n';
+  const buildMatchCsv = () => {
+    let csv = `${club.name} - Jr Cricket Match Report\n\n`;
     csv += `Date,${matchDate}\n`;
+    csv += `Year Level,${yearConfig?.label || yearLevel || ''}\n`;
     csv += `Teams,${team1} vs ${team2}\n`;
     csv += formatInningsCsv('1st Innings', innings1Data);
     csv += formatInningsCsv('2nd Innings', innings2Data);
+    return csv;
+  };
 
+  const matchReportFilename = () => `${club.reportPrefix}-Match-${yearConfig?.shortLabel || 'Jr'}-${matchDate}.csv`;
+
+  const downloadMatchCsv = (csv = buildMatchCsv()) => {
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `CCC-Match-${matchDate}.csv`;
+    a.download = matchReportFilename();
     a.click();
     window.URL.revokeObjectURL(url);
-    alert('Match data downloaded! Email to rahul@cornwallcricket.co.nz');
+  };
+
+  const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+  const openEmailReportModal = () => {
+    setReportEmailError('');
+    setReportEmailStatus('');
+    setShowEmailReportModal(true);
+  };
+
+  const sendMatchReportEmail = () => {
+    const email = reportEmail.trim();
+    if (!isValidEmail(email)) {
+      setReportEmailError('Enter a valid email address');
+      return;
+    }
+
+    setReportEmailError('');
+    const csv = buildMatchCsv();
+    const filename = matchReportFilename();
+    downloadMatchCsv(csv);
+
+    try {
+      localStorage.setItem(reportEmailKey, email);
+      if (legacyReportEmailKey) localStorage.removeItem(legacyReportEmailKey);
+    } catch {
+      // Ignore
+    }
+
+    const subject = `${club.shortName} Match Report: ${team1} vs ${team2}`;
+    const body = [
+      `${club.name} match report`,
+      '',
+      `Date: ${matchDate}`,
+      yearConfig ? `Year level: ${yearConfig.label}` : null,
+      `Teams: ${team1} vs ${team2}`,
+      innings1Data ? `1st innings (${innings1Data.team}): ${innings1Data.totalRuns}/${innings1Data.wickets}` : null,
+      innings2Data ? `2nd innings (${innings2Data.team}): ${innings2Data.totalRuns}/${innings2Data.wickets}` : null,
+      '',
+      `Please attach the downloaded file "${filename}" from your device before sending.`,
+      '',
+      'Full report (CSV):',
+      csv,
+    ].filter(Boolean).join('\n');
+
+    const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
+    setReportEmailStatus('Report downloaded. Your email app should open next — attach the file if needed, then send.');
+  };
+
+  const downloadMatchReportOnly = () => {
+    downloadMatchCsv();
+    setShowEmailReportModal(false);
+    setReportEmailStatus('');
   };
 
   const renderLiveBattingSummary = () => (
@@ -715,7 +783,7 @@ export default function CricketScorer() {
             {team1} vs {team2}
           </div>
           <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.75rem', marginTop: '0.35rem' }}>
-            {matchDate}
+            {yearConfig ? `${yearConfig.label} · ` : ''}{matchDate}
           </div>
           <div style={{ color: 'white', fontSize: '2.75rem', fontWeight: '900', marginTop: '0.75rem' }}>
             {innings1Data.totalRuns} - {innings2Data.totalRuns}
@@ -919,7 +987,7 @@ export default function CricketScorer() {
             color: 'white', fontSize: '1rem', fontWeight: '800',
             letterSpacing: '0.5px', textTransform: 'uppercase',
             flex: 1, textAlign: 'center'
-          }}>CCC Score Centre</h1>
+          }}>{club.headerTitle}</h1>
           
           {(screen === 'batting-score' || screen === 'bowling-score') && (
             <button 
@@ -1005,10 +1073,10 @@ export default function CricketScorer() {
                 fontSize: '2.5rem', fontWeight: '900', lineHeight: '1.1',
                 color: COLORS.black, marginBottom: '1rem', letterSpacing: '-0.03em'
               }}>
-                Cornwall Cricket Club<br/>Score Centre
+                {club.name}<br/>Score Centre
               </h1>
               <p style={{ fontSize: '1rem', color: COLORS.gray, fontWeight: '500' }}>
-                Keeping the scoreboard ticking over since '25
+                {club.tagline}
               </p>
             </div>
 
@@ -1024,7 +1092,7 @@ export default function CricketScorer() {
                   Saved match
                 </div>
                 <div style={{ fontWeight: '800', color: COLORS.black, marginBottom: '1rem' }}>
-                  {draftSummaryLine(savedDraft)}
+                  {draftSummaryLine(savedDraft, YEAR_LEVELS)}
                 </div>
                 <button onClick={resumeSavedMatch} style={{
                   width: '100%', backgroundColor: COLORS.primary, color: 'white',
@@ -1057,13 +1125,65 @@ export default function CricketScorer() {
           </div>
         )}
 
+        {/* Year Level Selection */}
+        {screen === 'year-select' && (
+          <div style={{ paddingTop: '2rem' }}>
+            <h2 style={{
+              fontSize: '2rem', fontWeight: '900', color: COLORS.black,
+              marginBottom: '1rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
+            }}>Select Year Level</h2>
+            <p style={{ color: COLORS.gray, marginBottom: '2rem', fontSize: '1rem' }}>
+              Choose the grade you are scoring today
+            </p>
+
+            {Object.values(YEAR_LEVELS).map((year) => (
+              <button
+                key={year.id}
+                onClick={() => {
+                  setYearLevel(year.id);
+                  setScreen('setup');
+                }}
+                style={{
+                  width: '100%',
+                  backgroundColor: yearLevel === year.id ? COLORS.black : 'white',
+                  color: yearLevel === year.id ? 'white' : COLORS.black,
+                  padding: '1.5rem',
+                  borderRadius: '1rem',
+                  border: `2px solid ${COLORS.black}`,
+                  fontSize: '1.25rem',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  marginBottom: '1rem',
+                  textAlign: 'left',
+                  letterSpacing: '-0.01em'
+                }}
+              >
+                <div>{year.label}</div>
+                <div style={{
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  marginTop: '0.35rem',
+                  opacity: 0.75
+                }}>
+                  {year.description}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Setup Screen */}
         {screen === 'setup' && (
           <div style={{ paddingTop: '2rem' }}>
             <h2 style={{
               fontSize: '2rem', fontWeight: '900', color: COLORS.black,
-              marginBottom: '2rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
+              marginBottom: '0.75rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
             }}>MATCH SETUP</h2>
+            {yearConfig && (
+              <p style={{ color: COLORS.gray, marginBottom: '2rem', fontSize: '1rem', fontWeight: '600' }}>
+                {yearConfig.label}
+              </p>
+            )}
             
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', 
@@ -2080,14 +2200,14 @@ export default function CricketScorer() {
             <div style={{ marginBottom: '1.5rem' }}>
               {renderMatchScorecard()}
             </div>
-            <button onClick={exportToCSV}
+            <button onClick={openEmailReportModal}
               style={{
                 width: '100%', padding: '1.25rem', backgroundColor: COLORS.primary,
                 color: 'white', border: 'none', borderRadius: '3rem',
                 fontSize: '1rem', fontWeight: '800', cursor: 'pointer',
                 textTransform: 'uppercase'
               }}
-            >Download Match Report</button>
+            >Email Match Report</button>
             <button
               onClick={() => {
                 clearStoredMatch();
@@ -2105,6 +2225,94 @@ export default function CricketScorer() {
           </div>
         )}
       </div>
+
+      {showEmailReportModal && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 60, padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: 'white', borderRadius: '1.5rem',
+            padding: '2rem', maxWidth: '24rem', width: '100%'
+          }}>
+            <h3 style={{
+              fontSize: '1.5rem', fontWeight: '900', marginBottom: '0.75rem',
+              color: COLORS.black, letterSpacing: '-0.02em', textTransform: 'uppercase'
+            }}>
+              Email report
+            </h3>
+            <p style={{ color: COLORS.gray, marginBottom: '1.25rem', lineHeight: 1.5 }}>
+              Enter the email address that should receive this match report.
+            </p>
+            <label style={{
+              display: 'block', marginBottom: '0.5rem', fontWeight: '700',
+              fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px',
+              color: COLORS.gray
+            }}>
+              Email address
+            </label>
+            <input
+              type="email"
+              value={reportEmail}
+              onChange={(e) => {
+                setReportEmail(e.target.value);
+                setReportEmailError('');
+                setReportEmailStatus('');
+              }}
+              placeholder="name@email.com"
+              autoComplete="email"
+              style={{
+                width: '100%', padding: '1rem', border: `2px solid ${reportEmailError ? COLORS.secondary : '#E5E7EB'}`,
+                borderRadius: '0.75rem', fontSize: '1rem', fontWeight: '600',
+                marginBottom: reportEmailError || reportEmailStatus ? '0.75rem' : '1.25rem'
+              }}
+            />
+            {reportEmailError && (
+              <p style={{ color: COLORS.secondary, fontSize: '0.875rem', fontWeight: '600', marginBottom: '1rem' }}>
+                {reportEmailError}
+              </p>
+            )}
+            {reportEmailStatus && (
+              <p style={{ color: COLORS.primary, fontSize: '0.875rem', fontWeight: '600', marginBottom: '1rem', lineHeight: 1.4 }}>
+                {reportEmailStatus}
+              </p>
+            )}
+            <button
+              onClick={sendMatchReportEmail}
+              style={{
+                width: '100%', padding: '1rem', backgroundColor: COLORS.black, color: 'white',
+                border: 'none', borderRadius: '3rem', fontSize: '0.875rem',
+                fontWeight: '800', cursor: 'pointer', textTransform: 'uppercase',
+                marginBottom: '0.75rem'
+              }}
+            >
+              Send report
+            </button>
+            <button
+              onClick={downloadMatchReportOnly}
+              style={{
+                width: '100%', padding: '0.85rem', backgroundColor: 'transparent',
+                color: COLORS.black, border: `2px solid ${COLORS.black}`, borderRadius: '3rem',
+                fontSize: '0.875rem', fontWeight: '800', cursor: 'pointer',
+                textTransform: 'uppercase', marginBottom: '0.5rem'
+              }}
+            >
+              Download only
+            </button>
+            <button
+              onClick={() => setShowEmailReportModal(false)}
+              style={{
+                width: '100%', padding: '0.75rem', background: 'none', border: 'none',
+                color: COLORS.gray, fontSize: '0.875rem', fontWeight: '700',
+                cursor: 'pointer', textTransform: 'uppercase'
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
