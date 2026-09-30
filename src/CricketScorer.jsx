@@ -26,7 +26,6 @@ const draftSummaryLine = (draft, yearLevels) => {
 
 export default function CricketScorer({ club }) {
   const COLORS = club.colors;
-  const TEAMS = club.teams;
   const DRAW_DATA = club.draw;
   const YEAR_LEVELS = club.yearLevels;
   const storageKey = `${club.id}-active-match`;
@@ -1208,10 +1207,10 @@ export default function CricketScorer({ club }) {
                 color: COLORS.gray }}>Your team</label>
               <input
                 type="text"
-                list={`${club.id}-teams`}
                 value={team1}
                 onChange={(e) => setTeam1(e.target.value)}
                 placeholder="Enter your team name"
+                autoComplete="off"
                 style={{
                   width: '100%', padding: '1rem', border: '2px solid #E5E7EB',
                   borderRadius: '0.75rem', fontSize: '1rem', fontWeight: '600'
@@ -1225,20 +1224,16 @@ export default function CricketScorer({ club }) {
                 color: COLORS.gray }}>Opposition</label>
               <input
                 type="text"
-                list={`${club.id}-teams`}
                 value={team2}
                 onChange={(e) => setTeam2(e.target.value)}
                 placeholder="Enter opposition team name"
+                autoComplete="off"
                 style={{
                   width: '100%', padding: '1rem', border: '2px solid #E5E7EB',
                   borderRadius: '0.75rem', fontSize: '1rem', fontWeight: '600'
                 }}
               />
             </div>
-
-            <datalist id={`${club.id}-teams`}>
-              {TEAMS.map((t) => <option key={t} value={t} />)}
-            </datalist>
 
             <button
               onClick={() => {
