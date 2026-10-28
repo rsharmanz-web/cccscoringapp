@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, BarChart3, Menu, X, Plus, Minus } from 'lucide-react';
+import AxhillesFooter from './AxhillesFooter.jsx';
 
 const NON_MATCH_SCREENS = new Set(['welcome', 'draw', 'draw-fixtures']);
 
@@ -1125,6 +1126,8 @@ export default function CricketScorer({ club }) {
               fontWeight: '800', letterSpacing: '0.5px',
               cursor: 'pointer', textTransform: 'uppercase'
             }}>View Draw</button>
+
+            <AxhillesFooter />
           </div>
         )}
 
