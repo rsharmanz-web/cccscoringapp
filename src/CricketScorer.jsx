@@ -162,9 +162,9 @@ export default function CricketScorer({ club }) {
     setStriker(snapshot.striker || 0);
     setBatStats(snapshot.batStats || {});
     setBatOuts(snapshot.batOuts || {});
-    setTotalRuns(snapshot.totalRuns || 0);
-    setWickets(snapshot.wickets || 0);
-    setExtras(snapshot.extras || 0);
+    setTotalRuns(Number.isFinite(snapshot.totalRuns) ? snapshot.totalRuns : 0);
+    setWickets(Number.isFinite(snapshot.wickets) ? snapshot.wickets : 0);
+    setExtras(Number.isFinite(snapshot.extras) ? snapshot.extras : 0);
     setShowExtrasMenu(false);
     setShowEndInningsConfirm(false);
     setShowNewPartnershipConfirm(false);
@@ -360,56 +360,94 @@ export default function CricketScorer({ club }) {
     }
   };
 
+  const toRuns = (value) => {
+    const n = typeof value === 'number' ? value : parseInt(value, 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const ensureBatStats = (stats, name) => {
+    if (!name) return stats;
+    if (stats[name]) return stats;
+    return { ...stats, [name]: { runs: 0, balls: 0 } };
+  };
+
   const recordBattingBall = (runs) => {
     const batsmanName = currentBatsmen[striker];
+    if (!batsmanName) return;
+
     setBattingOverHistory([...battingOverHistory, runs]);
-    
+
     if (runs === 'Out') {
-      const newStats = { ...batStats };
-      newStats[batsmanName].runs -= 3;
-      newStats[batsmanName].balls += 1;
+      const newStats = ensureBatStats({ ...batStats }, batsmanName);
+      newStats[batsmanName] = {
+        ...newStats[batsmanName],
+        runs: toRuns(newStats[batsmanName].runs) - 3,
+        balls: toRuns(newStats[batsmanName].balls) + 1,
+      };
       setBatStats(newStats);
-      
+
       const newOuts = { ...batOuts };
       newOuts[batsmanName] = (newOuts[batsmanName] || 0) + 1;
       setBatOuts(newOuts);
-      
-      setTotalRuns(totalRuns - 3);
-      setWickets(wickets + 1);
-    } else {
-      const runsNum = parseInt(runs);
-      const newStats = { ...batStats };
-      newStats[batsmanName].runs += runsNum;
-      newStats[batsmanName].balls += 1;
-      setBatStats(newStats);
-      setTotalRuns(totalRuns + runsNum);
-      if (runsNum % 2 === 1) setStriker(striker === 0 ? 1 : 0);
+
+      setTotalRuns(toRuns(totalRuns) - 3);
+      setWickets(toRuns(wickets) + 1);
+      return;
     }
+
+    const runsNum = toRuns(runs);
+    const newStats = ensureBatStats({ ...batStats }, batsmanName);
+    newStats[batsmanName] = {
+      ...newStats[batsmanName],
+      runs: toRuns(newStats[batsmanName].runs) + runsNum,
+      balls: toRuns(newStats[batsmanName].balls) + 1,
+    };
+    setBatStats(newStats);
+    setTotalRuns(toRuns(totalRuns) + runsNum);
+    if (runsNum % 2 === 1) setStriker(striker === 0 ? 1 : 0);
   };
 
   const undoBattingBall = () => {
     if (battingOverHistory.length === 0) return;
     const lastBall = battingOverHistory[battingOverHistory.length - 1];
     setBattingOverHistory(battingOverHistory.slice(0, -1));
-    const batsmanName = currentBatsmen[striker];
-    
+
+    // End-over markers are history-only; undoing them must not touch the score
+    if (lastBall === 'END_OVER') return;
+
+    // Odd runs flip the striker after the ball, so undo against the previous striker
+    let batsmanIndex = striker;
+    if (lastBall !== 'Out') {
+      const runsNum = toRuns(lastBall);
+      if (runsNum % 2 === 1) batsmanIndex = striker === 0 ? 1 : 0;
+    }
+    const batsmanName = currentBatsmen[batsmanIndex];
+    if (!batsmanName) return;
+
     if (lastBall === 'Out') {
-      const newStats = { ...batStats };
-      newStats[batsmanName].runs += 3;
-      newStats[batsmanName].balls -= 1;
+      const newStats = ensureBatStats({ ...batStats }, batsmanName);
+      newStats[batsmanName] = {
+        ...newStats[batsmanName],
+        runs: toRuns(newStats[batsmanName].runs) + 3,
+        balls: Math.max(0, toRuns(newStats[batsmanName].balls) - 1),
+      };
       setBatStats(newStats);
       setBatOuts({ ...batOuts, [batsmanName]: Math.max(0, (batOuts[batsmanName] || 0) - 1) });
-      setTotalRuns(totalRuns + 3);
-      setWickets(wickets - 1);
-    } else {
-      const runsNum = parseInt(lastBall);
-      const newStats = { ...batStats };
-      newStats[batsmanName].runs -= runsNum;
-      newStats[batsmanName].balls -= 1;
-      setBatStats(newStats);
-      setTotalRuns(totalRuns - runsNum);
-      if (runsNum % 2 === 1) setStriker(striker === 0 ? 1 : 0);
+      setTotalRuns(toRuns(totalRuns) + 3);
+      setWickets(Math.max(0, toRuns(wickets) - 1));
+      return;
     }
+
+    const runsNum = toRuns(lastBall);
+    const newStats = ensureBatStats({ ...batStats }, batsmanName);
+    newStats[batsmanName] = {
+      ...newStats[batsmanName],
+      runs: toRuns(newStats[batsmanName].runs) - runsNum,
+      balls: Math.max(0, toRuns(newStats[batsmanName].balls) - 1),
+    };
+    setBatStats(newStats);
+    setTotalRuns(toRuns(totalRuns) - runsNum);
+    if (runsNum % 2 === 1) setStriker(batsmanIndex);
   };
 
   const endBattingOver = () => {
@@ -420,39 +458,39 @@ export default function CricketScorer({ club }) {
     if (currentOver.length >= 8) return;
     const newOver = [...currentOver, result];
     setCurrentOver(newOver);
-    
+
     const newStats = { ...bowlerStats };
     if (!newStats[currentBowler]) {
       newStats[currentBowler] = { overs: 0, runs: 0, wickets: 0, wides: 0 };
     }
-    
+
     let runsToAdd = 0;
     if (result === 'Wide') {
       runsToAdd = 2;
       newStats[currentBowler].wides += 1;
     } else if (result.startsWith('W+')) {
-      const extraRuns = parseInt(result.substring(2));
+      const extraRuns = toRuns(result.substring(2));
       runsToAdd = 2 + extraRuns;
       newStats[currentBowler].wides += 1;
     } else if (result === 'Out') {
       newStats[currentBowler].wickets += 1;
-      setWickets(wickets + 1);
+      setWickets(toRuns(wickets) + 1);
       runsToAdd = -3;
     } else {
-      runsToAdd = parseInt(result);
+      runsToAdd = toRuns(result);
     }
-    
-    newStats[currentBowler].runs += runsToAdd;
-    setTotalRuns(totalRuns + runsToAdd);
+
+    newStats[currentBowler].runs = toRuns(newStats[currentBowler].runs) + runsToAdd;
+    setTotalRuns(toRuns(totalRuns) + runsToAdd);
     setBowlerStats(newStats);
   };
 
   const completeOver = () => {
     const validBalls = currentOver.filter(b => !b.startsWith('W') && b !== 'Wide').length;
     const newStats = { ...bowlerStats };
-    newStats[currentBowler].overs += validBalls / 6;
+    newStats[currentBowler].overs = toRuns(newStats[currentBowler].overs) + validBalls / 6;
     setBowlerStats(newStats);
-    setOverNumber(overNumber + 1);
+    setOverNumber(toRuns(overNumber) + 1);
     setScreen('select-bowler');
   };
 
@@ -460,27 +498,30 @@ export default function CricketScorer({ club }) {
     if (currentOver.length === 0) return;
     const lastBall = currentOver[currentOver.length - 1];
     setCurrentOver(currentOver.slice(0, -1));
-    
+
     const newStats = { ...bowlerStats };
+    if (!newStats[currentBowler]) {
+      newStats[currentBowler] = { overs: 0, runs: 0, wickets: 0, wides: 0 };
+    }
     let runsToRemove = 0;
-    
+
     if (lastBall === 'Wide') {
-      newStats[currentBowler].wides -= 1;
+      newStats[currentBowler].wides = Math.max(0, toRuns(newStats[currentBowler].wides) - 1);
       runsToRemove = 2;
     } else if (lastBall.startsWith('W+')) {
-      newStats[currentBowler].wides -= 1;
-      const extraRuns = parseInt(lastBall.substring(2));
+      newStats[currentBowler].wides = Math.max(0, toRuns(newStats[currentBowler].wides) - 1);
+      const extraRuns = toRuns(lastBall.substring(2));
       runsToRemove = 2 + extraRuns;
     } else if (lastBall === 'Out') {
-      newStats[currentBowler].wickets -= 1;
-      setWickets(wickets - 1);
+      newStats[currentBowler].wickets = Math.max(0, toRuns(newStats[currentBowler].wickets) - 1);
+      setWickets(Math.max(0, toRuns(wickets) - 1));
       runsToRemove = -3;
     } else {
-      runsToRemove = parseInt(lastBall);
+      runsToRemove = toRuns(lastBall);
     }
-    
-    newStats[currentBowler].runs -= runsToRemove;
-    setTotalRuns(totalRuns - runsToRemove);
+
+    newStats[currentBowler].runs = toRuns(newStats[currentBowler].runs) - runsToRemove;
+    setTotalRuns(toRuns(totalRuns) - runsToRemove);
     setBowlerStats(newStats);
   };
 
@@ -1610,8 +1651,9 @@ export default function CricketScorer({ club }) {
                     {['2', '3', '4', '5', '6'].map(wide => (
                       <button key={wide}
                         onClick={() => {
-                          setExtras(extras + parseInt(wide));
-                          setTotalRuns(totalRuns + parseInt(wide));
+                          const wideRuns = toRuns(wide);
+                          setExtras(toRuns(extras) + wideRuns);
+                          setTotalRuns(toRuns(totalRuns) + wideRuns);
                           setShowExtrasMenu(false);
                         }}
                         style={{
