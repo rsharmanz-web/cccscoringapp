@@ -2226,8 +2226,13 @@ export default function CricketScorer({ club }) {
               Thanks for using the CCC Scoring App. If you have feedback or need help
               building your own tool email{' '}
               <a
-                href="mailto:rahul@axhilles.com"
-                style={{ color: '#0047AB', fontWeight: 700, textDecoration: 'none' }}
+                href="mailto:rahul@axhilles.com?subject=CCC%20Scoring%20App%20feedback"
+                style={{
+                  color: '#0047AB',
+                  fontWeight: 700,
+                  textDecoration: 'underline',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
               >
                 rahul@axhilles.com
               </a>
