@@ -2,7 +2,34 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, BarChart3, Menu, X, Plus, Minus } from 'lucide-react';
 import AxhillesFooter from './AxhillesFooter.jsx';
 
-const NON_MATCH_SCREENS = new Set(['welcome', 'draw', 'draw-fixtures']);
+const NON_MATCH_SCREENS = new Set(['welcome', 'draw', 'draw-fixtures', 'howto']);
+
+const HOWTO_STEPS = [
+  {
+    title: 'Start the match',
+    detail: 'Tap Start Match, choose Year 2, 3, or 4, then enter your team and the opposition.',
+  },
+  {
+    title: 'Pick batting or bowling',
+    detail: 'Select what your team is doing this innings. For batting, enter the batting order and openers. For bowling, enter the bowler name and start the over.',
+  },
+  {
+    title: 'Record each ball',
+    detail: 'Tap runs (0–6), Out (−3 runs in junior scoring), or Wides. Use End Over / Complete Over when the over finishes, and Undo if you mistap.',
+  },
+  {
+    title: 'Check the live summary',
+    detail: 'Use the chart icon in the header to open the batting or bowling summary, then return to scoring.',
+  },
+  {
+    title: 'End the innings',
+    detail: 'Tap End Innings, confirm, review the innings summary, then continue to the next innings or finish the match.',
+  },
+  {
+    title: 'Match scorecard',
+    detail: 'After both innings you get the full match scorecard. Matches autosave on this device so you can resume if you leave mid-game.',
+  },
+];
 
 const draftSummaryLine = (draft, yearLevels) => {
   if (!draft) return '';
@@ -309,6 +336,7 @@ export default function CricketScorer({ club }) {
   const goBack = () => {
     if (screen === 'draw') setScreen('welcome');
     else if (screen === 'draw-fixtures') { setScreen('draw'); setSelectedRound(null); }
+    else if (screen === 'howto') setScreen('welcome');
     else if (screen === 'year-select') setScreen('welcome');
     else if (screen === 'setup') setScreen('year-select');
     else if (screen === 'team-select') setScreen('setup');
@@ -1047,10 +1075,96 @@ export default function CricketScorer({ club }) {
               padding: '1.25rem', borderRadius: '3rem',
               border: `2px solid ${COLORS.black}`, fontSize: '1rem',
               fontWeight: '800', letterSpacing: '0.5px',
-              cursor: 'pointer', textTransform: 'uppercase'
+              cursor: 'pointer', marginBottom: '1rem', textTransform: 'uppercase'
             }}>View Draw</button>
 
+            <button onClick={() => setScreen('howto')} style={{
+              width: '100%', backgroundColor: 'white', color: COLORS.black,
+              padding: '1.25rem', borderRadius: '3rem',
+              border: `2px solid #E5E7EB`, fontSize: '1rem',
+              fontWeight: '800', letterSpacing: '0.5px',
+              cursor: 'pointer', textTransform: 'uppercase'
+            }}>How to Score</button>
+
             <AxhillesFooter />
+          </div>
+        )}
+
+        {screen === 'howto' && (
+          <div style={{ paddingTop: '1.5rem', paddingBottom: '2rem' }}>
+            <h2 style={{
+              fontSize: '2rem', fontWeight: '900', color: COLORS.black,
+              marginBottom: '0.75rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
+            }}>How to Score</h2>
+            <p style={{
+              color: COLORS.gray, marginBottom: '1.5rem', fontSize: '1rem',
+              fontWeight: '500', lineHeight: 1.45
+            }}>
+              Follow the short walkthrough below, or read the steps. Red markers in the video show each tap.
+            </p>
+
+            <div style={{
+              marginBottom: '2rem', borderRadius: '1rem', overflow: 'hidden',
+              backgroundColor: '#111827', border: '2px solid #E5E7EB'
+            }}>
+              <video
+                controls
+                playsInline
+                preload="metadata"
+                style={{
+                  display: 'block', width: '100%', maxHeight: '70vh',
+                  backgroundColor: '#111827', aspectRatio: '390 / 844',
+                  objectFit: 'contain', margin: '0 auto'
+                }}
+              >
+                <source src={`${import.meta.env.BASE_URL}howto-walkthrough.webm`} type="video/webm" />
+                <source src={`${import.meta.env.BASE_URL}howto-walkthrough.mp4`} type="video/mp4" />
+                Your browser does not support embedded video.
+              </video>
+            </div>
+
+            <h3 style={{
+              fontSize: '0.875rem', fontWeight: '800', color: COLORS.gray,
+              textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '1rem'
+            }}>
+              Step by step
+            </h3>
+
+            <ol style={{
+              listStyle: 'none', padding: 0, margin: '0 0 2rem',
+              display: 'flex', flexDirection: 'column', gap: '1.25rem'
+            }}>
+              {HOWTO_STEPS.map((step, idx) => (
+                <li key={step.title} style={{ display: 'flex', gap: '0.875rem' }}>
+                  <div style={{
+                    flexShrink: 0, width: '2rem', height: '2rem', borderRadius: '999px',
+                    backgroundColor: COLORS.black, color: 'white',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.875rem', fontWeight: '800'
+                  }}>
+                    {idx + 1}
+                  </div>
+                  <div>
+                    <div style={{
+                      fontWeight: '800', color: COLORS.black, marginBottom: '0.25rem',
+                      fontSize: '1rem'
+                    }}>
+                      {step.title}
+                    </div>
+                    <div style={{ color: COLORS.gray, fontSize: '0.95rem', lineHeight: 1.45 }}>
+                      {step.detail}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            <button onClick={() => setScreen('welcome')} style={{
+              width: '100%', backgroundColor: COLORS.black, color: 'white',
+              padding: '1.25rem', borderRadius: '3rem', border: 'none',
+              fontSize: '1rem', fontWeight: '800', letterSpacing: '0.5px',
+              cursor: 'pointer', textTransform: 'uppercase'
+            }}>Back to Home</button>
           </div>
         )}
 
