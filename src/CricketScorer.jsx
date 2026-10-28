@@ -2204,7 +2204,7 @@ export default function CricketScorer({ club }) {
         )}
 
         {screen === 'confirm-innings' && (
-          <div style={{ paddingTop: '1rem' }}>
+          <div style={{ paddingTop: '1rem', paddingBottom: '2rem' }}>
             <h2 style={{
               fontSize: '2rem', fontWeight: '900', color: COLORS.black,
               marginBottom: '1.5rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
@@ -2218,6 +2218,20 @@ export default function CricketScorer({ club }) {
                 cursor: 'pointer', textTransform: 'uppercase'
               }}
             >{innings1Complete ? 'Confirm & Finish Match' : 'Confirm & Start Next Innings'}</button>
+
+            <p style={{
+              marginTop: '2rem', textAlign: 'center', color: COLORS.gray,
+              fontSize: '0.875rem', fontWeight: 500, lineHeight: 1.5
+            }}>
+              Thanks for using the CCC Scoring App. If you have feedback or need help
+              building your own tool email{' '}
+              <a
+                href="mailto:rahul@axhilles.com"
+                style={{ color: '#0047AB', fontWeight: 700, textDecoration: 'none' }}
+              >
+                rahul@axhilles.com
+              </a>
+            </p>
           </div>
         )}
 
