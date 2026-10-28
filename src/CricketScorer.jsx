@@ -537,6 +537,12 @@ export default function CricketScorer({ club }) {
     setBowlerStats(newStats);
   };
 
+  const startOppositeInnings = (completedMode) => {
+    const nextMode = completedMode === 'batting' ? 'bowling' : 'batting';
+    setMode(nextMode);
+    setScreen(nextMode === 'batting' ? 'batting-order' : 'select-bowler');
+  };
+
   const confirmInnings = () => {
     const inningsData = {
       team: myTeam, mode, totalRuns, wickets, extras,
@@ -544,13 +550,15 @@ export default function CricketScorer({ club }) {
     };
     
     if (!innings1Complete) {
+      const completedMode = mode;
       setInnings1Data(inningsData);
       setInnings1Complete(true);
       setBatStats({}); setBatOuts({}); setTotalRuns(0); setWickets(0);
       setExtras(0); setBowlerStats({}); setOverNumber(1);
       setCurrentBatsmen([null, null]); setStriker(0);
       setBattingOrder(['']); setCurrentBowler(''); setCurrentOver([]);
-      setBattingOverHistory([]); setMode(''); setScreen('mode-select');
+      setBattingOverHistory([]);
+      startOppositeInnings(completedMode);
     } else {
       setInnings2Data(inningsData);
       setInnings2Complete(true);
@@ -2173,7 +2181,13 @@ export default function CricketScorer({ club }) {
             }}>1st Innings</h2>
             {renderInningsReview(innings1Data, '1ST INNINGS')}
             <button
-              onClick={() => setScreen(innings2Complete ? 'match-summary' : 'mode-select')}
+              onClick={() => {
+                if (innings2Complete) {
+                  setScreen('match-summary');
+                  return;
+                }
+                startOppositeInnings(innings1Data?.mode || mode);
+              }}
               style={{
                 width: '100%', marginTop: '1.5rem', padding: '1.25rem',
                 backgroundColor: COLORS.black, color: 'white', border: 'none',
