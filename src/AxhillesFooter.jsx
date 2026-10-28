@@ -1,40 +1,24 @@
 export default function AxhillesFooter() {
   return (
     <div style={{
-      marginTop: '3rem',
-      paddingTop: '1.5rem',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: '0.65rem',
+      marginTop: '1.75rem',
+      textAlign: 'center',
+      fontSize: '0.8rem',
+      fontWeight: 600,
+      letterSpacing: '0.01em',
     }}>
-      <div style={{
-        fontSize: '0.75rem',
-        fontWeight: 700,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        color: '#6B7280',
-      }}>
-        Built by Axhilles
-      </div>
+      <span style={{ color: '#6B7280' }}>Brought to you by </span>
       <a
         href="https://axhilles.com"
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="Axhilles website"
-        style={{ display: 'block', lineHeight: 0 }}
+        style={{
+          color: '#0047AB',
+          textDecoration: 'none',
+          fontWeight: 800,
+        }}
       >
-        <img
-          src="/axhilles-logo.png"
-          alt="Axhilles"
-          style={{
-            width: '72px',
-            height: '72px',
-            objectFit: 'contain',
-            borderRadius: '0.85rem',
-            display: 'block',
-          }}
-        />
+        Axhilles
       </a>
     </div>
   );
