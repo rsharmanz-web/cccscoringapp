@@ -17,17 +17,25 @@ export default function AxhillesFooter() {
       }}>
         Built by Axhilles
       </div>
-      <img
-        src="/axhilles-logo.png"
-        alt="Axhilles"
-        style={{
-          width: '72px',
-          height: '72px',
-          objectFit: 'contain',
-          borderRadius: '0.85rem',
-          display: 'block',
-        }}
-      />
+      <a
+        href="https://axhilles.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Axhilles website"
+        style={{ display: 'block', lineHeight: 0 }}
+      >
+        <img
+          src="/axhilles-logo.png"
+          alt="Axhilles"
+          style={{
+            width: '72px',
+            height: '72px',
+            objectFit: 'contain',
+            borderRadius: '0.85rem',
+            display: 'block',
+          }}
+        />
+      </a>
     </div>
   );
 }
