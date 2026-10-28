@@ -26,7 +26,6 @@ const draftSummaryLine = (draft, yearLevels) => {
 
 export default function CricketScorer({ club }) {
   const COLORS = club.colors;
-  const TEAMS = club.teams;
   const DRAW_DATA = club.draw;
   const YEAR_LEVELS = club.yearLevels;
   const storageKey = `${club.id}-active-match`;
@@ -234,15 +233,19 @@ export default function CricketScorer({ club }) {
         next.screen = 'bowling-score';
       } else if (next.mode === 'bowling') {
         next.screen = 'select-bowler';
-      } else if (next.myTeam) {
+      } else if (next.myTeam || (next.team1 && next.team2)) {
+        if (!next.myTeam && next.team1) next.myTeam = next.team1;
         next.screen = 'mode-select';
-      } else if (next.team1 && next.team2) {
-        next.screen = 'team-select';
       } else if (next.yearLevel) {
         next.screen = 'setup';
       } else {
         next.screen = 'year-select';
       }
+    }
+
+    if (next.screen === 'team-select') {
+      if (!next.myTeam && next.team1) next.myTeam = next.team1;
+      next.screen = 'mode-select';
     }
 
     applyMatchSnapshot(next);
@@ -324,7 +327,7 @@ export default function CricketScorer({ club }) {
     else if (screen === 'year-select') setScreen('welcome');
     else if (screen === 'setup') setScreen('year-select');
     else if (screen === 'team-select') setScreen('setup');
-    else if (screen === 'mode-select') setScreen('team-select');
+    else if (screen === 'mode-select') setScreen('setup');
     else if (screen === 'batting-order') setScreen('mode-select');
     else if (screen === 'select-batsmen') setScreen('batting-order');
     else if (screen === 'batting-score') setScreen('select-batsmen');
@@ -1201,77 +1204,61 @@ export default function CricketScorer({ club }) {
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700',
                 fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.5px',
-                color: COLORS.gray }}>Team 1</label>
-              <select value={team1} onChange={(e) => setTeam1(e.target.value)}
+                color: COLORS.gray }}>Your team</label>
+              <input
+                type="text"
+                value={team1}
+                onChange={(e) => setTeam1(e.target.value)}
+                placeholder="Enter your team name"
+                autoComplete="off"
                 style={{
                   width: '100%', padding: '1rem', border: '2px solid #E5E7EB',
                   borderRadius: '0.75rem', fontSize: '1rem', fontWeight: '600'
                 }}
-              >
-                <option value="">Select Team</option>
-                {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+              />
             </div>
 
             <div style={{ marginBottom: '2rem' }}>
               <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700',
                 fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.5px',
-                color: COLORS.gray }}>Team 2</label>
-              <select value={team2} onChange={(e) => setTeam2(e.target.value)}
+                color: COLORS.gray }}>Opposition</label>
+              <input
+                type="text"
+                value={team2}
+                onChange={(e) => setTeam2(e.target.value)}
+                placeholder="Enter opposition team name"
+                autoComplete="off"
                 style={{
                   width: '100%', padding: '1rem', border: '2px solid #E5E7EB',
                   borderRadius: '0.75rem', fontSize: '1rem', fontWeight: '600'
                 }}
-              >
-                <option value="">Select Team</option>
-                {TEAMS.filter(t => t !== team1).map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+              />
             </div>
 
             <button
-              onClick={() => { if (team1 && team2 && team1 !== team2) setScreen('team-select'); }}
-              disabled={!team1 || !team2}
+              onClick={() => {
+                const mine = team1.trim();
+                const opposition = team2.trim();
+                if (!mine || !opposition || mine.toLowerCase() === opposition.toLowerCase()) return;
+                setTeam1(mine);
+                setTeam2(opposition);
+                setMyTeam(mine);
+                setScreen('mode-select');
+              }}
+              disabled={!team1.trim() || !team2.trim() || team1.trim().toLowerCase() === team2.trim().toLowerCase()}
               style={{
                 width: '100%',
-                backgroundColor: team1 && team2 ? COLORS.black : '#E5E7EB',
-                color: team1 && team2 ? 'white' : COLORS.gray,
+                backgroundColor: team1.trim() && team2.trim() && team1.trim().toLowerCase() !== team2.trim().toLowerCase()
+                  ? COLORS.black : '#E5E7EB',
+                color: team1.trim() && team2.trim() && team1.trim().toLowerCase() !== team2.trim().toLowerCase()
+                  ? 'white' : COLORS.gray,
                 padding: '1.25rem', borderRadius: '3rem', border: 'none',
                 fontSize: '1rem', fontWeight: '800', letterSpacing: '0.5px',
-                cursor: team1 && team2 ? 'pointer' : 'not-allowed',
+                cursor: team1.trim() && team2.trim() && team1.trim().toLowerCase() !== team2.trim().toLowerCase()
+                  ? 'pointer' : 'not-allowed',
                 textTransform: 'uppercase'
               }}
             >Continue</button>
-          </div>
-        )}
-
-        {/* Team Selection */}
-        {screen === 'team-select' && (
-          <div style={{ paddingTop: '2rem' }}>
-            <h2 style={{
-              fontSize: '2rem', fontWeight: '900', color: COLORS.black,
-              marginBottom: '1rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
-            }}>SELECT YOUR<br/>TEAM</h2>
-            <p style={{ color: COLORS.gray, marginBottom: '2rem', fontSize: '1rem' }}>
-              Choose which team you're scoring for
-            </p>
-            
-            <button onClick={() => { setMyTeam(team1); setScreen('mode-select'); }}
-              style={{
-                width: '100%', backgroundColor: COLORS.primary, color: 'white',
-                padding: '1.5rem', borderRadius: '1rem', border: 'none',
-                fontSize: '1.25rem', fontWeight: '800', cursor: 'pointer',
-                marginBottom: '1rem', letterSpacing: '-0.01em'
-              }}
-            >{team1}</button>
-            
-            <button onClick={() => { setMyTeam(team2); setScreen('mode-select'); }}
-              style={{
-                width: '100%', backgroundColor: COLORS.secondary, color: 'white',
-                padding: '1.5rem', borderRadius: '1rem', border: 'none',
-                fontSize: '1.25rem', fontWeight: '800', cursor: 'pointer',
-                letterSpacing: '-0.01em'
-              }}
-            >{team2}</button>
           </div>
         )}
 
@@ -1281,9 +1268,12 @@ export default function CricketScorer({ club }) {
             <h2 style={{
               fontSize: '2rem', fontWeight: '900', color: COLORS.black,
               marginBottom: '0.5rem', letterSpacing: '-0.03em', textTransform: 'uppercase'
-            }}>{myTeam}</h2>
-            <p style={{ color: COLORS.gray, marginBottom: '2rem', fontSize: '1rem', fontWeight: '600' }}>
-              Are you batting or bowling?
+            }}>{myTeam || team1}</h2>
+            <p style={{ color: COLORS.gray, marginBottom: '0.5rem', fontSize: '1rem', fontWeight: '600' }}>
+              vs {team2}
+            </p>
+            <p style={{ color: COLORS.gray, marginBottom: '2rem', fontSize: '1rem' }}>
+              Is your team batting or bowling?
             </p>
             
             <button onClick={() => { setMode('batting'); setScreen('batting-order'); }}
