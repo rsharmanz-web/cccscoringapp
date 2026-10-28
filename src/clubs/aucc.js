@@ -14,6 +14,12 @@ export const aucc = {
     gray: '#6B7280',
   },
   yearLevels: {
+    year2: {
+      id: 'year2',
+      label: 'Year 2',
+      shortLabel: 'Y2',
+      description: 'Junior grade scoring for Year 2',
+    },
     year3: {
       id: 'year3',
       label: 'Year 3',
