@@ -1,4 +1,6 @@
 export default function AxhillesFooter() {
+  const year = new Date().getFullYear();
+
   return (
     <div style={{
       marginTop: '1.75rem',
@@ -20,6 +22,7 @@ export default function AxhillesFooter() {
       >
         Axhilles
       </a>
+      <span style={{ color: '#9CA3AF' }}> · © {year}</span>
     </div>
   );
 }
