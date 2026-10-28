@@ -1,5 +1,6 @@
 import { BrowserRouter, Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { clubList, getClubBySlug } from './clubs/index.js';
+import AxhillesFooter from './AxhillesFooter.jsx';
 import CricketScorer from './CricketScorer.jsx';
 
 function ClubHome() {
@@ -51,6 +52,7 @@ function ClubHome() {
             </Link>
           ))}
         </div>
+        <AxhillesFooter />
       </div>
     </div>
   );
