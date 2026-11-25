@@ -383,6 +383,31 @@ export default function CricketScorer({ club }) {
     return { ...stats, [name]: { runs: 0, balls: 0 } };
   };
 
+  const isWideResult = (result) => result === 'Wide' || (typeof result === 'string' && result.startsWith('W+'));
+
+  const wideTeamRuns = (result) => {
+    if (result === 'Wide') return 2;
+    if (typeof result === 'string' && result.startsWith('W+')) {
+      return 2 + toRuns(result.substring(2));
+    }
+    return 0;
+  };
+
+  const wideRanRuns = (result) => {
+    if (typeof result === 'string' && result.startsWith('W+')) return toRuns(result.substring(2));
+    return 0;
+  };
+
+  const recordBattingWide = (result) => {
+    const teamRuns = wideTeamRuns(result);
+    const ran = wideRanRuns(result);
+    setBattingOverHistory([...battingOverHistory, result]);
+    setExtras(toRuns(extras) + teamRuns);
+    setTotalRuns(toRuns(totalRuns) + teamRuns);
+    // Batters change ends only on the runs they take, not the 2-run wide penalty
+    if (ran % 2 === 1) setStriker(striker === 0 ? 1 : 0);
+  };
+
   const recordBattingBall = (runs) => {
     const batsmanName = currentBatsmen[striker];
     if (!batsmanName) return;
@@ -424,8 +449,20 @@ export default function CricketScorer({ club }) {
     const lastBall = battingOverHistory[battingOverHistory.length - 1];
     setBattingOverHistory(battingOverHistory.slice(0, -1));
 
-    // End-over markers are history-only; undoing them must not touch the score
-    if (lastBall === 'END_OVER') return;
+    if (lastBall === 'END_OVER') {
+      setOverNumber((prev) => Math.max(1, toRuns(prev) - 1));
+      setStriker((prev) => (prev === 0 ? 1 : 0));
+      return;
+    }
+
+    if (isWideResult(lastBall)) {
+      const teamRuns = wideTeamRuns(lastBall);
+      const ran = wideRanRuns(lastBall);
+      setExtras(Math.max(0, toRuns(extras) - teamRuns));
+      setTotalRuns(toRuns(totalRuns) - teamRuns);
+      if (ran % 2 === 1) setStriker(striker === 0 ? 1 : 0);
+      return;
+    }
 
     // Odd runs flip the striker after the ball, so undo against the previous striker
     let batsmanIndex = striker;
@@ -464,6 +501,9 @@ export default function CricketScorer({ club }) {
 
   const endBattingOver = () => {
     setBattingOverHistory([...battingOverHistory, 'END_OVER']);
+    setOverNumber(toRuns(overNumber) + 1);
+    // Ends change at the end of an over
+    setStriker(striker === 0 ? 1 : 0);
   };
 
   const recordBowlingBall = (result) => {
@@ -1505,11 +1545,10 @@ export default function CricketScorer({ club }) {
                 textTransform: 'uppercase', letterSpacing: '1px' }}>
                 {myTeam}
               </div>
-              {extras > 0 && (
-                <div style={{ fontSize: '0.875rem', color: COLORS.gray, marginTop: '0.5rem' }}>
-                  Extras: {extras}
-                </div>
-              )}
+              <div style={{ fontSize: '0.75rem', color: COLORS.gray, marginTop: '0.5rem' }}>
+                Over {overNumber}
+                {extras > 0 ? ` · Extras ${extras}` : ''}
+              </div>
             </div>
 
             {/* Current Partnership */}
@@ -1555,28 +1594,44 @@ export default function CricketScorer({ club }) {
                 backgroundColor: 'white', padding: '1.25rem',
                 borderRadius: '1rem', marginBottom: '1.5rem', border: '2px solid #E5E7EB'
               }}>
-                <div style={{ fontSize: '0.875rem', fontWeight: '800', marginBottom: '0.75rem',
-                  textTransform: 'uppercase', letterSpacing: '0.5px', color: COLORS.gray }}>
-                  Partnership
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  marginBottom: '0.75rem'
+                }}>
+                  <div style={{ fontSize: '0.875rem', fontWeight: '800',
+                    textTransform: 'uppercase', letterSpacing: '0.5px', color: COLORS.gray }}>
+                    Partnership
+                  </div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: '700', color: COLORS.gray }}>
+                    Over {overNumber}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
                   {battingOverHistory.map((ball, idx) => (
-                    <div key={idx} style={{
-                      width: ball === 'END_OVER' ? '2.5rem' : '2.5rem',
-                      height: '2.5rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: '50%',
-                      fontWeight: '800',
-                      fontSize: '0.95rem',
-                      backgroundColor: ball === 'END_OVER' ? COLORS.black :
-                                     ball === 'Out' ? COLORS.secondary : 
-                                     ball === '4' || ball === '6' ? COLORS.primary : '#F3F4F6',
-                      color: ball === 'END_OVER' || ball === 'Out' || ball === '4' || ball === '6' ? 'white' : COLORS.black
-                    }}>
-                      {ball === 'END_OVER' ? '' : ball}
-                    </div>
+                    ball === 'END_OVER' ? (
+                      <div key={idx} title="End of over" style={{
+                        minWidth: '2.75rem', height: '2.5rem', padding: '0 0.4rem',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: '0.75rem', fontWeight: '800', fontSize: '0.65rem',
+                        letterSpacing: '0.04em', textTransform: 'uppercase',
+                        backgroundColor: COLORS.black, color: 'white'
+                      }}>
+                        EO
+                      </div>
+                    ) : (
+                      <div key={idx} style={{
+                        minWidth: '2.5rem', height: '2.5rem', padding: '0 0.35rem',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: '50%', fontWeight: '800',
+                        fontSize: isWideResult(ball) ? '0.75rem' : '0.95rem',
+                        backgroundColor: ball === 'Out' ? COLORS.secondary :
+                                       isWideResult(ball) ? '#FCD34D' :
+                                       ball === '4' || ball === '6' ? COLORS.primary : '#F3F4F6',
+                        color: ball === 'Out' || ball === '4' || ball === '6' ? 'white' : COLORS.black
+                      }}>
+                        {ball === 'Wide' ? 'Wd' : ball}
+                      </div>
+                    )
                   ))}
                 </div>
               </div>
@@ -1612,7 +1667,7 @@ export default function CricketScorer({ club }) {
                 >OUT</button>
               </div>
 
-              {/* Extras, Undo & End Over */}
+              {/* Wides, Undo & End Over */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                 <button onClick={() => setShowExtrasMenu(!showExtrasMenu)}
                   style={{
@@ -1621,8 +1676,8 @@ export default function CricketScorer({ club }) {
                     fontWeight: '800', cursor: 'pointer', textTransform: 'uppercase',
                     letterSpacing: '0.5px'
                   }}
-                >{showExtrasMenu ? 'Close' : 'Extras'}</button>
-                {battingOverHistory.length > 0 && (
+                >{showExtrasMenu ? 'Close Wides' : 'Wides'}</button>
+                {battingOverHistory.length > 0 ? (
                   <button onClick={undoBattingBall}
                     style={{
                       padding: '1rem', backgroundColor: '#6B7280', color: 'white',
@@ -1631,6 +1686,8 @@ export default function CricketScorer({ club }) {
                       letterSpacing: '0.5px'
                     }}
                   >Undo</button>
+                ) : (
+                  <div />
                 )}
                 <button onClick={() => setShowEndOverConfirm(true)}
                   style={{
@@ -1649,23 +1706,26 @@ export default function CricketScorer({ club }) {
                 }}>
                   <div style={{ fontSize: '0.875rem', fontWeight: '800', marginBottom: '0.75rem',
                     textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Wide Value
+                    Wide Type
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.5rem' }}>
-                    {['2', '3', '4', '5', '6'].map(wide => (
-                      <button key={wide}
-                        onClick={() => {
-                          const wideRuns = toRuns(wide);
-                          setExtras(toRuns(extras) + wideRuns);
-                          setTotalRuns(toRuns(totalRuns) + wideRuns);
-                          setShowExtrasMenu(false);
-                        }}
+                    <button
+                      onClick={() => { recordBattingWide('Wide'); setShowExtrasMenu(false); }}
+                      style={{
+                        padding: '0.875rem 0', backgroundColor: '#FCD34D',
+                        color: COLORS.black, border: 'none', borderRadius: '0.75rem',
+                        fontSize: '0.875rem', fontWeight: '900', cursor: 'pointer'
+                      }}
+                    >W<br/><span style={{ fontSize: '0.625rem' }}>(2)</span></button>
+                    {['1', '2', '3', '4'].map((extra) => (
+                      <button key={extra}
+                        onClick={() => { recordBattingWide(`W+${extra}`); setShowExtrasMenu(false); }}
                         style={{
-                          padding: '0.875rem', backgroundColor: '#FCD34D',
+                          padding: '0.875rem 0', backgroundColor: '#FCD34D',
                           color: COLORS.black, border: 'none', borderRadius: '0.75rem',
-                          fontSize: '1.25rem', fontWeight: '900', cursor: 'pointer'
+                          fontSize: '0.875rem', fontWeight: '900', cursor: 'pointer'
                         }}
-                      >{wide}</button>
+                      >W+{extra}<br/><span style={{ fontSize: '0.625rem' }}>({2 + parseInt(extra, 10)})</span></button>
                     ))}
                   </div>
                 </div>
@@ -1721,7 +1781,7 @@ export default function CricketScorer({ club }) {
                 setShowEndOverConfirm(false);
               }}
               title="END OVER?"
-              message="Mark the end of this over in the partnership summary?"
+              message="End this over? It will be marked in the partnership trail and the over count will move on."
             />
           </div>
         )}
